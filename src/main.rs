@@ -2,6 +2,8 @@ use rustfft::{FftPlanner, num_complex::Complex};
 use std::fs::File;
 use std::path::Path;
 use wav::BitDepth;
+use std::convert::TryFrom;
+use inline_python::python;
 
 fn main() -> Result<(), std::io::Error> {
     let fftsize = 8192;
@@ -25,6 +27,17 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut buffer = complex[10000..18192].to_vec();
     fft.process(&mut buffer);
-    dbg!("{}", buffer.into_iter().map(Complex::norm).collect::<Vec<_>>());
+    let mag = buffer.into_iter().map(Complex::norm).collect::<Vec<_>>();
+    let time : Vec<f32> = vec![1.0;8192];
+    let freq = (0..8192).map(|v| f64::try_from(v).unwrap()).collect::<Vec<f64>>();
+
+    dbg!(&time);
+
+    python! {
+        import matplotlib.pyplot as plt
+        plt.hist2d('time, 'freq, [1, 8192],weights='mag)
+        plt.show()
+    }
+
     Ok(())
 }
