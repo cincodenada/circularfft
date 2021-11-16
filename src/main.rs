@@ -25,17 +25,22 @@ fn main() -> Result<(), std::io::Error> {
         BitDepth::Empty => panic!("Ack!")
     };
 
+    let width=100;
+
     let mut buffer = complex[10000..18192].to_vec();
     fft.process(&mut buffer);
     let mag = buffer.into_iter().map(Complex::norm).collect::<Vec<_>>();
-    let time : Vec<f32> = vec![1.0;8192];
     let freq = (0..8192).map(|v| f64::try_from(v).unwrap()).collect::<Vec<f64>>();
-
-    dbg!(&time);
+    let starts: Vec<usize> = (0..width).map(|v| v*fftsize).collect();
+    let mag: Vec<f32> = starts.iter().map(|start| {
+        complex[*start..start+fftsize].to_vec().into_iter().map(Complex::norm).collect::<Vec<f32>>()
+    }).flatten().collect();
+    let time: Vec<usize> = starts.iter().map(|start| vec![*start;fftsize]).flatten().collect();
+    let freq: Vec<usize> = starts.iter().map(|_| (0..fftsize).collect::<Vec<usize>>()).flatten().collect();
 
     python! {
         import matplotlib.pyplot as plt
-        plt.hist2d('time, 'freq, [1, 8192],weights='mag)
+        plt.hist2d('time, 'freq, ['width, 'fftsize],weights='mag)
         plt.show()
     }
 
