@@ -8,7 +8,7 @@ use std::cmp::max;
 use ordered_float::OrderedFloat;
 
 fn main() -> Result<(), std::io::Error> {
-    let fftsize = 8192;
+    let fftsize = 2_usize.pow(14);
 
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(fftsize);
@@ -29,13 +29,10 @@ fn main() -> Result<(), std::io::Error> {
 
     let floatMax = |a:f32, b:f32| max(OrderedFloat(a), OrderedFloat(b)).into();
 
-    let width=300;
+    let width=complex.len()/fftsize*2;
 
-    let mut buffer = complex[10000..18192].to_vec();
-    fft.process(&mut buffer);
-    let mag = buffer.into_iter().map(Complex::norm).collect::<Vec<_>>();
-    let freq = (0..8192).map(|v| f64::try_from(v).unwrap()).collect::<Vec<f64>>();
-    let starts: Vec<usize> = (0..width).map(|v| v*fftsize).collect();
+    let freq = (0..fftsize).map(|v| (v as f64)).collect::<Vec<f64>>();
+    let starts: Vec<usize> = (0..width).map(|v| v*fftsize/2).collect();
     let mag: Vec<f32> = starts.iter().map(|start| {
         let mut buffer = complex[*start..start+fftsize].to_vec();
         fft.process(&mut buffer);
