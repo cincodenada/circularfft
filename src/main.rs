@@ -33,9 +33,11 @@ fn main() -> Result<(), std::io::Error> {
     let freq = (0..8192).map(|v| f64::try_from(v).unwrap()).collect::<Vec<f64>>();
     let starts: Vec<usize> = (0..width).map(|v| v*fftsize).collect();
     let mag: Vec<f32> = starts.iter().map(|start| {
-        complex[*start..start+fftsize].to_vec().into_iter().map(Complex::norm).collect::<Vec<f32>>()
+        let mut buffer = complex[*start..start+fftsize].to_vec();
+        fft.process(&mut buffer);
+        buffer.into_iter().map(Complex::norm).collect::<Vec<f32>>()
     }).flatten().collect();
-    let time: Vec<usize> = starts.iter().map(|start| vec![*start;fftsize]).flatten().collect();
+    let time: Vec<usize> = starts.iter().map(|start| vec![*start+fftsize/2;fftsize]).flatten().collect();
     let freq: Vec<usize> = starts.iter().map(|_| (0..fftsize).collect::<Vec<usize>>()).flatten().collect();
 
     python! {
