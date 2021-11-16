@@ -42,11 +42,12 @@ fn main() -> Result<(), std::io::Error> {
         buffer.into_iter().take(fftsize/2).map(|v| v.norm().log10()).collect::<Vec<f32>>()
     }).flatten().collect();
     let time: Vec<usize> = starts.iter().map(|start| vec![*start+fftsize/4;fftsize/2]).flatten().collect();
-    let freq: Vec<f32> = starts.iter().map(|_| (0..fftsize/2).map(|v| floatMax((v as f32).log10(),0.0)).collect::<Vec<_>>()).flatten().collect();
+    let freqbins: Vec<f32> = (0..fftsize/2).map(|v| floatMax((v as f32).log10(),0.0)).collect::<Vec<_>>();
+    let freq: Vec<f32> = starts.iter().map(|_| freqbins.to_vec()).flatten().collect();
 
     python! {
         import matplotlib.pyplot as plt
-        plt.hist2d('time, 'freq, ['width, 'fftsize/2],weights='mag)
+        plt.hist2d('time, 'freq, ['starts, 'freqbins],weights='mag)
         plt.show()
     }
 
