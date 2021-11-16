@@ -4,6 +4,8 @@ use std::path::Path;
 use wav::BitDepth;
 use std::convert::TryFrom;
 use inline_python::python;
+use std::cmp::max;
+use ordered_float::OrderedFloat;
 
 fn main() -> Result<(), std::io::Error> {
     let fftsize = 8192;
@@ -25,6 +27,8 @@ fn main() -> Result<(), std::io::Error> {
         BitDepth::Empty => panic!("Ack!")
     };
 
+    let floatMax = |a:f32, b:f32| max(OrderedFloat(a), OrderedFloat(b)).into();
+
     let width=300;
 
     let mut buffer = complex[10000..18192].to_vec();
@@ -38,7 +42,7 @@ fn main() -> Result<(), std::io::Error> {
         buffer.into_iter().take(fftsize/2).map(|v| v.norm().log10()).collect::<Vec<f32>>()
     }).flatten().collect();
     let time: Vec<usize> = starts.iter().map(|start| vec![*start+fftsize/4;fftsize/2]).flatten().collect();
-    let freq: Vec<usize> = starts.iter().map(|_| (0..fftsize/2).collect::<Vec<usize>>()).flatten().collect();
+    let freq: Vec<f32> = starts.iter().map(|_| (0..fftsize/2).map(|v| floatMax((v as f32).log10(),0.0)).collect::<Vec<_>>()).flatten().collect();
 
     python! {
         import matplotlib.pyplot as plt
