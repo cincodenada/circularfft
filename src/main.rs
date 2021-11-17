@@ -8,7 +8,7 @@ use std::cmp::max;
 use ordered_float::OrderedFloat;
 
 fn main() -> Result<(), std::io::Error> {
-    let fftsize = 2_usize.pow(4);
+    let fftsize = 2_usize.pow(14);
 
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(fftsize);
@@ -66,11 +66,11 @@ fn main() -> Result<(), std::io::Error> {
             },
             _ => {}
         }
-        (*frac, *curcol)
+        (*frac * std::f32::consts::PI*2.0, *curcol)
     }).unzip()).unzip();
     let time = vec![1;fftsize/2];
 
-    let values: Vec<_> = dupcol.1.iter().flatten().collect();
+    let values = dupcol.1;
     let x = dupcol.0;
     let y = wholes;
 
@@ -88,7 +88,15 @@ fn main() -> Result<(), std::io::Error> {
         import numpy as np
         import math
 
-        theta = [p*math.pi*2 for p in 'x]
+        x = [row + [math.pi*2] for row in 'x]
+        x = x + [x[-1]]
+        y = [col + [col[-1]] for col in 'y] + [['y[-1][0]+1] * (len('y[0])+1)]
+        def dims(x):
+            print(len(x))
+            print([len(r) for r in x])
+        dims(x)
+        dims(y)
+        dims('values)
 
         fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
         ax.set_rmax(3)
@@ -96,7 +104,7 @@ fn main() -> Result<(), std::io::Error> {
         ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
         ax.grid(True)
 
-        plt.pcolormesh(['x, theta],'values)
+        plt.pcolormesh(x, y, 'values)
         plt.show()
     }
 
