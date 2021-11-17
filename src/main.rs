@@ -33,18 +33,22 @@ fn main() -> Result<(), std::io::Error> {
 
     let freq = (0..fftsize).map(|v| (v as f64)).collect::<Vec<f64>>();
     let starts: Vec<usize> = (0..width).map(|v| v*fftsize/2).collect();
-    let mag: Vec<f32> = starts.iter().map(|start| {
+    let mag: Vec<Vec<f32>> = starts.iter().map(|start| {
         let mut buffer = complex[*start..start+fftsize].to_vec();
         fft.process(&mut buffer);
         buffer.into_iter().take(fftsize/2).map(|v| v.norm().log10()).collect::<Vec<f32>>()
-    }).flatten().collect();
-    let time: Vec<usize> = starts.iter().map(|start| vec![*start+fftsize/4;fftsize/2]).flatten().collect();
+    }).collect();
+    let time: Vec<Vec<usize>> = starts.iter().map(|start| vec![*start+fftsize/4;fftsize/2]).collect();
     let freqbins: Vec<f32> = (0..fftsize/2).map(|v| floatMax((v as f32).log10(),0.0)).collect::<Vec<_>>();
+
     let freq: Vec<f32> = starts.iter().map(|_| freqbins.to_vec()).flatten().collect();
+
+    let flatmag = mag.into_iter().flatten().collect::<Vec<_>>();
+    let flattime = time.into_iter().flatten().collect::<Vec<_>>();
 
     python! {
         import matplotlib.pyplot as plt
-        plt.hist2d('time, 'freq, ['starts, 'freqbins],weights='mag)
+        plt.hist2d('flattime, 'freq, ['starts, 'freqbins],weights='flatmag)
         plt.show()
     }
 
