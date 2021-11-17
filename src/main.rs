@@ -29,19 +29,25 @@ fn main() -> Result<(), std::io::Error> {
 
     let floatMax = |a:f32, b:f32| max(OrderedFloat(a), OrderedFloat(b)).into();
 
-    let width=complex.len()/fftsize*2;
+    let width=complex.len()/fftsize*2-1;
 
     let freq = (0..fftsize).map(|v| (v as f64)).collect::<Vec<f64>>();
     let starts: Vec<usize> = (0..width).map(|v| v*fftsize/2).collect();
     let mag: Vec<Vec<f32>> = starts.iter().map(|start| {
         let mut buffer = complex[*start..start+fftsize].to_vec();
         fft.process(&mut buffer);
-        buffer.into_iter().take(fftsize/2).map(|v| v.norm().log10()).collect::<Vec<f32>>()
+        buffer.into_iter().take(fftsize/2).map(|v| v.norm().log2()).collect::<Vec<f32>>()
     }).collect();
     let time: Vec<Vec<usize>> = starts.iter().map(|start| vec![*start+fftsize/4;fftsize/2]).collect();
-    let freqbins: Vec<f32> = (0..fftsize/2).map(|v| floatMax((v as f32).log10(),0.0)).collect::<Vec<_>>();
+    let freqbins: Vec<f32> = (0..fftsize/2).map(|v| floatMax((v as f32).log2(),0.0)).collect::<Vec<_>>();
 
     let freq: Vec<f32> = starts.iter().map(|_| freqbins.to_vec()).flatten().collect();
+    let r: Vec<f32> = freqbins.iter().map(|v| v.floor()).collect();
+    let theta = r.iter().zip(freqbins.iter()).map(|(&r, &v)| v - r).collect::<Vec<_>>();
+
+    let xbins = r.to_vec().into_iter().map(OrderedFloat).max().unwrap();
+    let xbinsf: f32 = xbins.into();
+    let onefreq = freqbins.iter().filter(|f| OrderedFloat(**f) >= xbins).map(|f| f - xbinsf).collect::<Vec<_>>();
 
     //let flatmag = mag.into_iter().flatten().collect::<Vec<_>>();
     //let flattime = time.into_iter().flatten().collect::<Vec<_>>();
@@ -49,9 +55,24 @@ fn main() -> Result<(), std::io::Error> {
     let col = &mag[100];
     let time = vec![1;fftsize/2];
 
+    dbg!(&theta);
+    dbg!(&r);
+    dbg!(&xbinsf);
+    dbg!(&onefreq);
+    dbg!(&freqbins);
+
     python! {
         import matplotlib.pyplot as plt
-        plt.hist2d('time, 'freqbins, [1, 'freqbins],weights='col)
+        import numpy as np
+        import math
+
+        #fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
+        #ax.set_rmax(2)
+        #ax.set_rticks([0.5, 1, 1.5, 2])  # Less radial ticks
+        #ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
+        #ax.grid(True)
+
+        plt.hist2d('theta, 'r, ['onefreq, 'xbinsf],weights='col)
         plt.show()
     }
 
