@@ -27,7 +27,7 @@ fn main() -> Result<(), std::io::Error> {
         BitDepth::Empty => panic!("Ack!")
     };
 
-    let floatMax = |a:f32, b:f32| max(OrderedFloat(a), OrderedFloat(b)).into();
+    //let floatMax = |a:f32, b:f32| max(OrderedFloat(a), OrderedFloat(b)).into();
 
     let width=complex.len()/fftsize*2-1;
 
@@ -39,7 +39,7 @@ fn main() -> Result<(), std::io::Error> {
         buffer.into_iter().take(fftsize/2).map(|v| v.norm().log2()).collect::<Vec<f32>>()
     }).collect();
     let time: Vec<Vec<usize>> = starts.iter().map(|start| vec![*start+fftsize/4;fftsize/2]).collect();
-    let freqbins: Vec<f32> = (0..fftsize/2).map(|v| floatMax((v as f32).log2(),0.0)).collect::<Vec<_>>();
+    let freqbins: Vec<f32> = (1..fftsize/2).map(|v| (v as f32).log2()).collect::<Vec<_>>();
 
     let freq: Vec<f32> = starts.iter().map(|_| freqbins.to_vec()).flatten().collect();
     let r: Vec<f32> = freqbins.iter().map(|v| v.floor()).collect();
@@ -52,7 +52,22 @@ fn main() -> Result<(), std::io::Error> {
     //let flatmag = mag.into_iter().flatten().collect::<Vec<_>>();
     //let flattime = time.into_iter().flatten().collect::<Vec<_>>();
 
-    let col = &mag[100];
+    let mut col = mag[100].iter();
+    let mut freqiter = freqbins.windows(2);
+    let mut curcol = col.next().unwrap();
+    let mut curfreq = freqiter.next();
+    let wholes = (0..=xbinsf as usize).map(|v| std::iter::repeat(v).take(onefreq.len())).flatten().collect::<Vec<usize>>();
+    let dupcol = onefreq.iter().cycle().zip(wholes.iter()).map(|(frac, whole)| {
+        let comp = *frac + *whole as f32;
+        match curfreq {
+            Some([min, max]) if comp >= *max => {
+                curfreq = freqiter.next();
+                curcol = col.next().unwrap();
+            },
+            _ => {}
+        }
+        (*frac, *curcol)
+    }).collect::<Vec<(f32,f32)>>();
     let time = vec![1;fftsize/2];
 
     dbg!(&theta);
@@ -60,11 +75,16 @@ fn main() -> Result<(), std::io::Error> {
     dbg!(&xbinsf);
     dbg!(&onefreq);
     dbg!(&freqbins);
+    dbg!(&mag[100]);
+    dbg!(&dupcol);
 
     python! {
         import matplotlib.pyplot as plt
         import numpy as np
         import math
+
+        theta = [p[0] for p in 'dupcol]
+        weight = [p[1] for p in 'dupcol]
 
         #fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
         #ax.set_rmax(2)
@@ -72,7 +92,7 @@ fn main() -> Result<(), std::io::Error> {
         #ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
         #ax.grid(True)
 
-        plt.hist2d('theta, 'r, ['onefreq, 'xbinsf],weights='col)
+        plt.hist2d(theta, 'wholes, ['onefreq, 'xbinsf],weights=weight)
         plt.show()
     }
 
