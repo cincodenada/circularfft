@@ -43,12 +43,15 @@ fn main() -> Result<(), std::io::Error> {
 
     let freq: Vec<f32> = starts.iter().map(|_| freqbins.to_vec()).flatten().collect();
 
-    let flatmag = mag.into_iter().flatten().collect::<Vec<_>>();
-    let flattime = time.into_iter().flatten().collect::<Vec<_>>();
+    //let flatmag = mag.into_iter().flatten().collect::<Vec<_>>();
+    //let flattime = time.into_iter().flatten().collect::<Vec<_>>();
+
+    let col = &mag[100];
+    let time = vec![1;fftsize/2];
 
     python! {
         import matplotlib.pyplot as plt
-        plt.hist2d('flattime, 'freq, ['starts, 'freqbins],weights='flatmag)
+        plt.hist2d('time, 'freqbins, [1, 'freqbins],weights='col)
         plt.show()
     }
 
