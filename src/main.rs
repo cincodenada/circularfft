@@ -8,7 +8,7 @@ use std::cmp::max;
 use ordered_float::OrderedFloat;
 
 fn main() -> Result<(), std::io::Error> {
-    let fftsize = 2_usize.pow(14);
+    let fftsize = 2_usize.pow(4);
 
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(fftsize);
@@ -56,9 +56,9 @@ fn main() -> Result<(), std::io::Error> {
     let mut freqiter = freqbins.windows(2);
     let mut curcol = col.next().unwrap();
     let mut curfreq = freqiter.next();
-    let wholes = (0..=xbinsf as usize).map(|v| std::iter::repeat(v).take(onefreq.len())).flatten().collect::<Vec<usize>>();
-    let dupcol = onefreq.iter().cycle().zip(wholes.iter()).map(|(frac, whole)| {
-        let comp = *frac + *whole as f32;
+    let wholes: Vec<Vec<_>> = (0..=xbinsf as usize).map(|v| std::iter::repeat(v).take(onefreq.len()).collect()).collect();
+    let dupcol: (Vec<Vec<_>>, Vec<Vec<_>>) = (0..=xbinsf as usize).map(|whole| onefreq.iter().map(|frac| {
+        let comp = *frac + whole as f32;
         match curfreq {
             Some([min, max]) if comp >= *max => {
                 curfreq = freqiter.next();
@@ -67,8 +67,12 @@ fn main() -> Result<(), std::io::Error> {
             _ => {}
         }
         (*frac, *curcol)
-    }).collect::<Vec<(f32,f32)>>();
+    }).unzip()).unzip();
     let time = vec![1;fftsize/2];
+
+    let values: Vec<_> = dupcol.1.iter().flatten().collect();
+    let x = dupcol.0;
+    let y = wholes;
 
     //dbg!(&theta);
     //dbg!(&r);
@@ -77,14 +81,14 @@ fn main() -> Result<(), std::io::Error> {
     //dbg!(&freqbins);
     //dbg!(&mag[200]);
     //dbg!(&dupcol);
+    //dbg!(&wholes);
 
     python! {
         import matplotlib.pyplot as plt
         import numpy as np
         import math
 
-        theta = [p[0]*math.pi*2 for p in 'dupcol]
-        weight = [p[1] for p in 'dupcol]
+        theta = [p*math.pi*2 for p in 'x]
 
         fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
         ax.set_rmax(3)
@@ -92,7 +96,7 @@ fn main() -> Result<(), std::io::Error> {
         ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
         ax.grid(True)
 
-        plt.hist2d('wholes, theta, ['xbinsf, 'onefreq],weights=weight)
+        plt.pcolormesh(['x, theta],'values)
         plt.show()
     }
 
