@@ -115,6 +115,7 @@ dependencies = [
  "ordered-float",
  "piston_window",
  "rustfft",
+ "tuple",
  "wav",
 ]
 
@@ -1646,6 +1647,16 @@ name = "ttf-parser"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e5d7cd7ab3e47dda6e56542f4bbf3824c15234958c6e1bd6aaa347e93499fdc"
+
+[[package]]
+name = "tuple"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39a40ba241047e1174c927dc5f61c141a166b938d61a2ff61838441368cc7d0e"
+dependencies = [
+ "num-traits",
+ "serde",
+]
 
 [[package]]
 name = "unicode-xid"
