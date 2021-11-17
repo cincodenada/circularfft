@@ -52,27 +52,7 @@ fn main() -> Result<(), std::io::Error> {
     //let flatmag = mag.into_iter().flatten().collect::<Vec<_>>();
     //let flattime = time.into_iter().flatten().collect::<Vec<_>>();
 
-    let mut col = mag[100].iter();
-    let mut freqiter = freqbins.windows(2);
-    let mut curcol = col.next().unwrap();
-    let mut curfreq = freqiter.next();
-    let wholes: Vec<Vec<_>> = (0..=xbinsf as usize).map(|v| std::iter::repeat(v).take(onefreq.len()).collect()).collect();
-    let dupcol: (Vec<Vec<_>>, Vec<Vec<_>>) = (0..=xbinsf as usize).map(|whole| onefreq.iter().map(|frac| {
-        let comp = *frac + whole as f32;
-        match curfreq {
-            Some([min, max]) if comp >= *max => {
-                curfreq = freqiter.next();
-                curcol = col.next().unwrap();
-            },
-            _ => {}
-        }
-        (*frac * std::f32::consts::PI*2.0, *curcol)
-    }).unzip()).unzip();
-    let time = vec![1;fftsize/2];
-
-    let values = dupcol.1;
-    let x = dupcol.0;
-    let y = wholes;
+    let (x, y, values) = make_color_mesh(&mag[200], &freqbins, &onefreq, xbinsf);
 
     //dbg!(&theta);
     //dbg!(&r);
@@ -102,6 +82,8 @@ fn main() -> Result<(), std::io::Error> {
         ax.set_rmax(3)
         ax.set_rticks([0.5, 1, 1.5, 2])  # Less radial ticks
         ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
+        ax.set_xticks([(s+0.5)/12*math.pi*2 for s in range(0,12)])
+        ax.set_xticklabels(['|']*12)
         ax.grid(True)
 
         plt.pcolormesh(x, y, 'values)
@@ -109,4 +91,25 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     Ok(())
+}
+
+fn make_color_mesh(fftcol: &[f32], freqbins: &[f32], onefreq: &[f32], repcount: f32) -> (Vec<Vec<f32>>, Vec<Vec<f32>>, Vec<Vec<f32>>) {
+    let mut col = fftcol.iter();
+    let mut freqiter = freqbins.windows(2);
+    let mut curcol = col.next().unwrap();
+    let mut curfreq = freqiter.next();
+    let wholes: Vec<Vec<_>> = (0..=repcount as usize).map(|v| std::iter::repeat(v as f32).take(onefreq.len()).collect()).collect();
+    let dupcol: (Vec<Vec<_>>, Vec<Vec<_>>) = (0..=repcount as usize).map(|whole| onefreq.iter().map(|frac| {
+        let comp = *frac + whole as f32;
+        match curfreq {
+            Some([min, max]) if comp >= *max => {
+                curfreq = freqiter.next();
+                curcol = col.next().unwrap();
+            },
+            _ => {}
+        }
+        (*frac * std::f32::consts::PI*2.0, *curcol)
+    }).unzip()).unzip();
+
+    (dupcol.0, wholes, dupcol.1)
 }
