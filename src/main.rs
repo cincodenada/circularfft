@@ -1,3 +1,6 @@
+extern crate piston_window;
+use piston_window::*;
+
 use rustfft::{FftPlanner, num_complex::Complex};
 use std::fs::File;
 use std::path::Path;
@@ -54,7 +57,16 @@ fn main() -> Result<(), std::io::Error> {
     //let flattime = time.into_iter().flatten().collect::<Vec<_>>();
 
     let (x, y, values) = make_color_mesh(&mag[200], &freqbins, &onefreq, xbinsf);
-    make_rectangles(&x,&y,&values);
+    dbg!(make_rectangles(&x,&y,&values).last());
+    //let mut window: PistonWindow =
+    //    WindowSettings::new("Hello World!", [512; 2])
+    //        .build().unwrap();
+    //while let Some(e) = window.next() {
+    //    window.draw_2d(&e, |c, g, _| {
+    //        clear([0.5, 0.5, 0.5, 1.0], g);
+    //        make_rectangles(&x,&y,&values).map(|(color, points)| polygon(color, points, c.transform, g))
+    //    });
+    //}
 
     //dbg!(&theta);
     //dbg!(&r);
@@ -116,12 +128,38 @@ fn make_color_mesh(fftcol: &[f32], freqbins: &[f32], onefreq: &[f32], repcount: 
     (dupcol.0, wholes, dupcol.1)
 }
 
-fn rep_last<T>(v: &Vec<T>) -> impl Iterator<Item=(&T, &T)> {
-    v.iter().chain(std::iter::once(&v[v.len()-1])).tuple_windows()
+fn rep_last<T>(v: &Vec<T>) -> impl Iterator<Item=&T> {
+    v.iter().chain(std::iter::once(&v[v.len()-1]))
+}
+fn add_pi(v: &Vec<f32>) -> impl Iterator<Item=&f32> {
+    v.iter().chain(std::iter::once(&(std::f32::consts::PI*2.0)))
 }
 
-fn make_rectangles(x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, z: &Vec<Vec<f32>>) -> () {
-    let rectangles = rep_last(x).zip(rep_last(y)).zip(z.iter()).map(|(((x1, x2), (y1, y2)), z)| {
-        dbg!(((x1, y1), (x2, y2), z))
-    }).last();
+fn make_rectangles(x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, z: &Vec<Vec<f32>>) 
+    -> impl Iterator<Item=(Vec<f32>, Vec<Vec<f64>>)> {
+    rep_last(x).tuple_windows()
+        .zip(y.iter().chain(std::iter::once(&vec![y.len() as f32;y[0].len()])).tuple_windows())
+        .zip(z.iter())
+        .map(|(((x1, x2), (y1, y2)), z)| {
+            add_pi(x1).zip(rep_last(y1)).tuple_windows()
+                .zip(add_pi(x2).zip(rep_last(y2)).tuple_windows())
+                .zip(z.iter())
+                .map(|(((sw, nw), (se, ne)), z)| (
+                        vec![1.0,0.0,0.0,1.0],
+                        vec![
+                            vec![*nw.0 as f64, *nw.1 as f64],
+                            vec![*ne.0 as f64, *ne.1 as f64],
+                            vec![*se.0 as f64, *se.1 as f64],
+                            vec![*sw.0 as f64, *sw.1 as f64]
+                        ]
+                ))).flatten()
+        //(
+        //    vec![1.0,0.0,0.0,1.0],
+        //    vec![
+        //        vec![x1, y1],
+        //        vec![x1, y2],
+        //        vec![x2, y2],
+        //        vec![x2, y1]
+        //    ]
+        //)
 }
