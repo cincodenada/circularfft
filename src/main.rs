@@ -70,29 +70,29 @@ fn main() -> Result<(), std::io::Error> {
     }).collect::<Vec<(f32,f32)>>();
     let time = vec![1;fftsize/2];
 
-    dbg!(&theta);
-    dbg!(&r);
-    dbg!(&xbinsf);
-    dbg!(&onefreq);
-    dbg!(&freqbins);
-    dbg!(&mag[100]);
-    dbg!(&dupcol);
+    //dbg!(&theta);
+    //dbg!(&r);
+    //dbg!(&xbinsf);
+    //dbg!(&onefreq);
+    //dbg!(&freqbins);
+    //dbg!(&mag[200]);
+    //dbg!(&dupcol);
 
     python! {
         import matplotlib.pyplot as plt
         import numpy as np
         import math
 
-        theta = [p[0] for p in 'dupcol]
+        theta = [p[0]*math.pi*2 for p in 'dupcol]
         weight = [p[1] for p in 'dupcol]
 
-        #fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
-        #ax.set_rmax(2)
-        #ax.set_rticks([0.5, 1, 1.5, 2])  # Less radial ticks
-        #ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
-        #ax.grid(True)
+        fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
+        ax.set_rmax(3)
+        ax.set_rticks([0.5, 1, 1.5, 2])  # Less radial ticks
+        ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
+        ax.grid(True)
 
-        plt.hist2d(theta, 'wholes, ['onefreq, 'xbinsf],weights=weight)
+        plt.hist2d('wholes, theta, ['xbinsf, 'onefreq],weights=weight)
         plt.show()
     }
 
