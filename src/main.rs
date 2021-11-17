@@ -6,9 +6,10 @@ use std::convert::TryFrom;
 use inline_python::python;
 use std::cmp::max;
 use ordered_float::OrderedFloat;
+use itertools::Itertools;
 
 fn main() -> Result<(), std::io::Error> {
-    let fftsize = 2_usize.pow(14);
+    let fftsize = 2_usize.pow(4);
 
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(fftsize);
@@ -53,6 +54,7 @@ fn main() -> Result<(), std::io::Error> {
     //let flattime = time.into_iter().flatten().collect::<Vec<_>>();
 
     let (x, y, values) = make_color_mesh(&mag[200], &freqbins, &onefreq, xbinsf);
+    make_rectangles(&x,&y,&values);
 
     //dbg!(&theta);
     //dbg!(&r);
@@ -63,32 +65,32 @@ fn main() -> Result<(), std::io::Error> {
     //dbg!(&dupcol);
     //dbg!(&wholes);
 
-    python! {
-        import matplotlib.pyplot as plt
-        import numpy as np
-        import math
+    //python! {
+    //    import matplotlib.pyplot as plt
+    //    import numpy as np
+    //    import math
 
-        x = [row + [math.pi*2] for row in 'x]
-        x = x + [x[-1]]
-        y = [col + [col[-1]] for col in 'y] + [['y[-1][0]+1] * (len('y[0])+1)]
-        def dims(x):
-            print(len(x))
-            print([len(r) for r in x])
-        dims(x)
-        dims(y)
-        dims('values)
+    //    x = [row + [math.pi*2] for row in 'x]
+    //    x = x + [x[-1]]
+    //    y = [col + [col[-1]] for col in 'y] + [['y[-1][0]+1] * (len('y[0])+1)]
+    //    def dims(x):
+    //        print(len(x))
+    //        print([len(r) for r in x])
+    //    dims(x)
+    //    dims(y)
+    //    dims('values)
 
-        fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
-        ax.set_rmax(3)
-        ax.set_rticks([0.5, 1, 1.5, 2])  # Less radial ticks
-        ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
-        ax.set_xticks([(s+0.5)/12*math.pi*2 for s in range(0,12)])
-        ax.set_xticklabels(['|']*12)
-        ax.grid(True)
+    //    fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
+    //    ax.set_rmax(3)
+    //    ax.set_rticks([0.5, 1, 1.5, 2])  # Less radial ticks
+    //    ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
+    //    ax.set_xticks([(s+0.5)/12*math.pi*2 for s in range(0,12)])
+    //    ax.set_xticklabels(['|']*12)
+    //    ax.grid(True)
 
-        plt.pcolormesh(x, y, 'values)
-        plt.show()
-    }
+    //    plt.pcolormesh(x, y, 'values)
+    //    plt.show()
+    //}
 
     Ok(())
 }
@@ -112,4 +114,14 @@ fn make_color_mesh(fftcol: &[f32], freqbins: &[f32], onefreq: &[f32], repcount: 
     }).unzip()).unzip();
 
     (dupcol.0, wholes, dupcol.1)
+}
+
+fn rep_last<T>(v: &Vec<T>) -> impl Iterator<Item=(&T, &T)> {
+    v.iter().chain(std::iter::once(&v[v.len()-1])).tuple_windows()
+}
+
+fn make_rectangles(x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, z: &Vec<Vec<f32>>) -> () {
+    let rectangles = rep_last(x).zip(rep_last(y)).zip(z.iter()).map(|(((x1, x2), (y1, y2)), z)| {
+        dbg!(((x1, y1), (x2, y2), z))
+    }).last();
 }
