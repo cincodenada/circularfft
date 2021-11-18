@@ -3,7 +3,7 @@ struct BracketedChunks<I> where I: Iterator,
     min: I::Item,
     max: I::Item,
     size: I::Item,
-    prev: I::Item,
+    next: Some(I::Item),
     source: I,
 }
 
@@ -14,20 +14,23 @@ where
     type Item = I::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if(!prev) {
-            while let prev = source.next() if prev < min {}
+        match next {
+            None => 
+        }
+        if(!next) {
+            while let next = source.next() if next < min {}
             return min
         }
-        if(prev == max) {
-            prev = None
+        if(next == max) {
+            next = None
             return max
         }
-        if(prev) {
-            let cur = prev
-            prev = source.next();
-            if(!prev) { prev = max }
+        if(next) {
+            let cur = next
+            next = source.next();
+            if(!next) { next = max }
             // TODO: Make check for > case = bad
-            if((cur/size).floor() < (prev/size).floor()) {
+            if((cur/size).floor() < (next/size).floor()) {
                 return (cur/size).floor()
             } else {
                 return cur
