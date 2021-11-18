@@ -70,16 +70,26 @@ fn main() -> Result<(), std::io::Error> {
         move |val| [(val-min)/range, 0.0, 0.0, 1.0]
     };
 
-    let (x, y, values) = make_color_mesh(&mag[100], &freqbins, &onefreq, xbinsf);
+    //let (x, y, values) = make_color_mesh(&mag[100], &freqbins, &onefreq, xbinsf);
+
+    let freq_range = (16.35, 7902.13);
+    let mapped_range = freq_range.map(|v| (v as f64).log2());
+    let mapped_span = mapped_range.1 - mapped_range.0;
+
     let mut window: PistonWindow =
         WindowSettings::new("Hello World!", [512; 2])
             .build().unwrap();
     while let Some(e) = window.next() {
         window.draw_2d(&e, |c, g, _| {
             clear([0.5, 0.5, 0.5, 1.0], g);
-            let (rects, minval, maxval) = make_rectangles(&mag[100], max_freq, (16.35, 7902.13));
+            let (rects, minval, maxval) = make_rectangles(&mag[100], max_freq, freq_range);
             let colorer = makeColorer(minval, maxval);
-            rects.into_iter().map(|(val, points)| polygon(colorer(val), &points, c.transform, g)).last();
+            let mindim = (|[x, y]:[u32;2]| std::cmp::min(x, y))(c.viewport.unwrap().draw_size) as f64;
+            rects.into_iter().map(|(val, points)| polygon(
+                colorer(val),
+                &points.map(|p| p.map(|v|(v-mapped_range.0)/mapped_span*mindim)),
+                c.transform, g
+            )).last();
         });
     }
 
