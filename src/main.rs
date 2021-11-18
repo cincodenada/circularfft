@@ -28,10 +28,17 @@ fn main() -> Result<(), std::io::Error> {
         //BitDepth::Sixteen(vec) => vec.into_iter().collect(),
         //BitDepth::TwentyFour(vec) => vec.into_iter().collect(),
         //BitDepth::ThirtyTwoFloat(vec) => vec.into_iter().collect(),
-        BitDepth::ThirtyTwoFloat(vec) => vec.into_iter().map(FftPoint::from).collect(),
+        BitDepth::ThirtyTwoFloat(vec) => vec
+            .chunks(header.channel_count as usize)
+            .map(|v| v.into_iter().sum::<f32>()/v.len() as f32)
+            .map(FftPoint::from)
+            .collect(),
         _ => panic!("Ack!"),
         BitDepth::Empty => panic!("Ack!")
     };
+    dbg!(complex.len());
+    let sampleRate = header.sampling_rate;
+    dbg!(&header);
 
     //let floatMax = |a:f32, b:f32| max(OrderedFloat(a), OrderedFloat(b)).into();
 
