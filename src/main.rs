@@ -76,18 +76,20 @@ fn main() -> Result<(), std::io::Error> {
     let mapped_range = freq_range.map(|v| (v as f64).log2());
     let mapped_span = mapped_range.1 - mapped_range.0;
 
+    let mut slice = mag.iter().cycle();
+
     let mut window: PistonWindow =
         WindowSettings::new("Hello World!", [512; 2])
             .build().unwrap();
     while let Some(e) = window.next() {
         window.draw_2d(&e, |c, g, _| {
             clear([0.5, 0.5, 0.5, 1.0], g);
-            let (rects, minval, maxval) = make_rectangles(&mag[100], max_freq, freq_range);
+            let (rects, minval, maxval) = make_rectangles(slice.next().unwrap(), max_freq, freq_range);
             let colorer = makeColorer(minval, maxval);
-            let mindim = (|[x, y]:[u32;2]| std::cmp::min(x, y))(c.viewport.unwrap().draw_size) as f64;
+            let dims = c.viewport.unwrap().draw_size.map(f64::from);
             rects.into_iter().map(|(val, points)| polygon(
                 colorer(val),
-                &points.map(|p| [p[0]*mindim, (p[1]-mapped_range.0)/mapped_span*mindim]),
+                &points.map(|p| [p[0]*dims[0], (p[1]-mapped_range.0)/mapped_span*dims[1]]),
                 c.transform, g
             )).last();
         });
@@ -180,9 +182,8 @@ fn make_rectangles(mag: &[f32], max_freq: u32, clip: (f32, f32)) -> (Vec<(f32, [
         .skip(1).map(|(idx, m)| (OrderedFloat(idx as f32*(max_freq as f32/mag.len() as f32)), m))
         .filter(|(f, _)| *f >= clip_ord.0 && *f < clip_ord.1)
         .map(|(f, m)| (f.into(), m));
-    let boxed = dbgIter(dbgIter(
-        bracket(freqs, clip.0, clip.1)
-    ).map(|(f, m)| ((f-clip.0+1.0).log2(), m)));
+    let boxed = bracket(freqs, clip.0, clip.1)
+        .map(|(f, m)| ((f-clip.0+1.0).log2(), m));
     // TODO: Do....not that ^^
     //dbg!(&boxed.clone().collect::<Vec<_>>());
 
@@ -236,8 +237,6 @@ fn make_rectangles(mag: &[f32], max_freq: u32, clip: (f32, f32)) -> (Vec<(f32, [
             ]
         }.into_iter().map(move |rect| (*m, rect.map(|r| r.map(f64::from))))
     }).flatten().collect();
-
-    dbg!(&rects);
 
     (rects, minval, maxval)
 }
