@@ -180,9 +180,10 @@ fn make_rectangles(mag: &[f32], max_freq: u32, clip: (f32, f32)) -> (Vec<(f32, [
         .skip(1).map(|(idx, m)| (OrderedFloat(idx as f32*(max_freq as f32/mag.len() as f32)), m))
         .filter(|(f, _)| *f >= clip_ord.0 && *f < clip_ord.1)
         .map(|(f, m)| (f.into(), m));
-    let boxed = dbgIter(
+    let boxed = dbgIter(dbgIter(
         bracket(freqs, clip.0, clip.1)
-    ).map(|(f, m)| ((f-clip.0).log2(), m));
+    ).map(|(f, m)| ((f-clip.0+1.0).log2(), m)));
+    // TODO: Do....not that ^^
     //dbg!(&boxed.clone().collect::<Vec<_>>());
 
     let mut minval = f32::INFINITY;
@@ -222,15 +223,15 @@ fn make_rectangles(mag: &[f32], max_freq: u32, clip: (f32, f32)) -> (Vec<(f32, [
                 ],
                 [
                     [f.fract(), f.floor()],
-                    [f.fract(), f.floor()+1.0],
-                    [1.0, f.floor()+1.0],
+                    [f.fract(), f.floor()+d],
+                    [1.0, f.floor()+d],
                     [1.0, f.floor()]
                 ],
                 [
-                    [0.0, f.floor()+d],
-                    [0.0, f.floor()+d+1.0],
-                    [nextf.fract(), f.floor()+d+1.0],
-                    [nextf.fract(), f.floor()+d]
+                    [0.0, f.floor()],
+                    [0.0, f.floor()+1.0],
+                    [nextf.fract(), f.floor()+1.0],
+                    [nextf.fract(), f.floor()]
                 ]
             ]
         }.into_iter().map(move |rect| (*m, rect.map(|r| r.map(f64::from))))
