@@ -1,5 +1,7 @@
 extern crate piston_window;
+extern crate tuple;
 use piston_window::*;
+use tuple::*;
 
 use rustfft::{FftPlanner, num_complex::Complex};
 use std::fs::File;
@@ -10,7 +12,6 @@ use inline_python::python;
 use std::cmp::max;
 use ordered_float::OrderedFloat;
 use itertools::Itertools;
-use tuple;
 
 fn main() -> Result<(), std::io::Error> {
     let fftsize = 2_usize.pow(4);
@@ -36,7 +37,6 @@ fn main() -> Result<(), std::io::Error> {
 
     let width=complex.len()/fftsize*2-1;
 
-    let freq = (0..fftsize).map(|v| (v as f64)).collect::<Vec<f64>>();
     let starts: Vec<usize> = (0..width).map(|v| v*fftsize/2).collect();
     let mag: Vec<Vec<f32>> = starts.iter().map(|start| {
         let mut buffer = complex[*start..start+fftsize].to_vec();
@@ -44,9 +44,10 @@ fn main() -> Result<(), std::io::Error> {
         buffer.into_iter().take(fftsize/2).map(|v| v.norm().log2()).collect::<Vec<f32>>()
     }).collect();
     let time: Vec<Vec<usize>> = starts.iter().map(|start| vec![*start+fftsize/4;fftsize/2]).collect();
+
+    let freq = (0..fftsize).map(|v| (v as f64)).collect::<Vec<f64>>();
     let freqbins: Vec<f32> = (1..fftsize/2).map(|v| (v as f32).log2()).collect::<Vec<_>>();
 
-    let freq: Vec<f32> = starts.iter().map(|_| freqbins.to_vec()).flatten().collect();
     let r: Vec<f32> = freqbins.iter().map(|v| v.floor()).collect();
     let theta = r.iter().zip(freqbins.iter()).map(|(&r, &v)| v - r).collect::<Vec<_>>();
 
@@ -58,7 +59,7 @@ fn main() -> Result<(), std::io::Error> {
     //let flattime = time.into_iter().flatten().collect::<Vec<_>>();
 
     let (x, y, values) = make_color_mesh(&mag[200], &freqbins, &onefreq, xbinsf);
-    dbg!(make_rectangles(x,y,values).last());
+    dbg!(make_rectangles(&freq,&mag[200],(16.35, 7902.13)));
     //let mut window: PistonWindow =
     //    WindowSettings::new("Hello World!", [512; 2])
     //        .build().unwrap();
@@ -136,13 +137,15 @@ fn add_pi(v: &Vec<f32>) -> impl Iterator<Item=&f32> {
     v.iter().chain(std::iter::once(&(std::f32::consts::PI*2.0)))
 }
 
-fn make_rectangles(freq: &[f32], mag: &[f32], clip: (f32, f32)) -> impl Iterator<Item=(Vec<f32>, Vec<Vec<f64>>)> {
-    let clip_ord = tuple(clip).map(OrderedFloat)
+fn make_rectangles(freq: &[f64], mag: &[f32], clip: (f64, f64)) -> Vec<(Vec<f32>, Vec<Vec<f64>>)> {
+    let clip_ord = clip.map(OrderedFloat);
     let clipped_freqs = freq.iter().map(|f| OrderedFloat(*f)).zip(mag.iter())
-        .filter(|(f, _)| f > clip_ord.0 && f < clip_ord.1);
-    let boxed = std::iter::once((OrderedFloat(clip_ord.0), &mag[0]))
+        .filter(|(f, _)| *f > clip_ord.0 && *f < clip_ord.1)
+        .map(|(f, m)| (f.into(), m));
+    dbg!(&freq);
+    let boxed = std::iter::once((clip.0, &mag[0]))
         .chain(clipped_freqs)
-        .chain(std::iter::once((OrderedFloat(clip_ord.1), &mag[mag.len()-1])));
+        .chain(std::iter::once((clip.1, &mag[mag.len()-1])));
 
     boxed.tuple_windows().map(|((f, m), (nextf, nextm))| (
         vec![1.0,0.0,0.0,1.0],
@@ -151,6 +154,6 @@ fn make_rectangles(freq: &[f32], mag: &[f32], clip: (f32, f32)) -> impl Iterator
             vec![f.into(), f.floor()+1.0],
             vec![nextf.into(), f.floor()+1.0],
             vec![nextf.into(), f.floor()]
-        ]
-    ))
+        ].into_iter().map(|v| v.into_iter().map(|f| f as f64).collect()).collect()
+    )).collect()
 }
