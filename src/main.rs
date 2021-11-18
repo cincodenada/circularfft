@@ -13,7 +13,7 @@ use ordered_float::OrderedFloat;
 use itertools::Itertools;
 
 fn main() -> Result<(), std::io::Error> {
-    let fftsize = 2_usize.pow(14);
+    let fftsize = 2_usize.pow(5);
 
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(fftsize);
@@ -72,7 +72,7 @@ fn main() -> Result<(), std::io::Error> {
 
     //let (x, y, values) = make_color_mesh(&mag[100], &freqbins, &onefreq, xbinsf);
 
-    let freq_range = (16.35, 7902.13);
+    let freq_range = (16.35, 8372.02);
     let mapped_range = freq_range.map(|v| (v as f64).log2());
     let mapped_span = mapped_range.1 - mapped_range.0;
 
@@ -87,7 +87,7 @@ fn main() -> Result<(), std::io::Error> {
             let mindim = (|[x, y]:[u32;2]| std::cmp::min(x, y))(c.viewport.unwrap().draw_size) as f64;
             rects.into_iter().map(|(val, points)| polygon(
                 colorer(val),
-                &points.map(|p| p.map(|v|(v-mapped_range.0)/mapped_span*mindim)),
+                &points.map(|p| [p[0]*mindim, (p[1]-mapped_range.0)/mapped_span*mindim]),
                 c.transform, g
             )).last();
         });
@@ -160,34 +160,83 @@ fn add_pi(v: &Vec<f32>) -> impl Iterator<Item=&f32> {
     v.iter().chain(std::iter::once(&(std::f32::consts::PI*2.0)))
 }
 
+fn bracket<X: Copy, V: Copy>(it: impl Iterator<Item=(X, V)>, min: X, max: X) -> impl Iterator<Item=(X, V)> {
+    it.enumerate()
+        .map(move |(idx, tup)| match idx {
+            0 => vec![(min, tup.1), tup],
+            _ => vec![tup]
+        }).flatten()
+}
+
+fn dbgIter<I, T>(it: I) -> impl Iterator<Item=T> where I: Iterator<Item=T>, T: std::fmt::Debug {
+    let collected = it.collect::<Vec<_>>();
+    dbg!(&collected);
+    collected.into_iter()
+}
+
 fn make_rectangles(mag: &[f32], max_freq: u32, clip: (f32, f32)) -> (Vec<(f32, [[f64;2];4])>, f32, f32) {
     let clip_ord = clip.map(OrderedFloat);
     let freqs = mag.iter().enumerate()
         .skip(1).map(|(idx, m)| (OrderedFloat(idx as f32*(max_freq as f32/mag.len() as f32)), m))
-        .filter(|(f, _)| *f > clip_ord.0 && *f < clip_ord.1)
+        .filter(|(f, _)| *f >= clip_ord.0 && *f < clip_ord.1)
         .map(|(f, m)| (f.into(), m));
-    let boxed = std::iter::once((clip.0, &mag[0]))
-        .chain(freqs)
-        .chain(std::iter::once((clip.1, &mag[mag.len()-1])))
-        .map(|(f, m)| (f.log2(), m));
+    let boxed = dbgIter(
+        bracket(freqs, clip.0, clip.1)
+    ).map(|(f, m)| ((f-clip.0).log2(), m));
     //dbg!(&boxed.clone().collect::<Vec<_>>());
 
     let mut minval = f32::INFINITY;
     let mut maxval = f32::NEG_INFINITY;
     let rects = boxed.tuple_windows().map(|((f, m), (nextf, nextm))| {
-        let height = match nextf.floor() - f.floor() { 0.0 => 1.0, d => d };
         if m < &minval { minval = *m }
         if m > &maxval { maxval = *m }
-        (
-            *m,
-            [
-                [f.into(), f.floor()],
-                [f.into(), f.floor()+height],
-                [nextf.into(), f.floor()+height],
-                [nextf.into(), f.floor()]
-            ].map(|v| v.map(|f| f as f64))
-        )
-    }).collect();
+        match nextf.floor() - f.floor() {
+            0.0 => vec![
+                [
+                    [f.fract(), f.floor()],
+                    [f.fract(), f.floor()+1.0],
+                    [nextf.fract(), f.floor()+1.0],
+                    [nextf.fract(), f.floor()]
+                ]
+            ],
+            1.0 => vec![
+                [
+                    [f.fract(), f.floor()],
+                    [f.fract(), f.floor()+1.0],
+                    [1.0, f.floor()+1.0],
+                    [1.0, f.floor()]
+                ],
+                [
+                    [0.0, f.floor()],
+                    [0.0, f.floor()+1.0],
+                    [nextf.fract(), f.floor()+1.0],
+                    [nextf.fract(), f.floor()]
+                ]
+            ],
+            d => vec![
+                [
+                    [0.0, f.floor()],
+                    [0.0, f.floor()+d],
+                    [f.fract(), f.floor()+d],
+                    [f.fract(), f.floor()]
+                ],
+                [
+                    [f.fract(), f.floor()],
+                    [f.fract(), f.floor()+1.0],
+                    [1.0, f.floor()+1.0],
+                    [1.0, f.floor()]
+                ],
+                [
+                    [0.0, f.floor()+d],
+                    [0.0, f.floor()+d+1.0],
+                    [nextf.fract(), f.floor()+d+1.0],
+                    [nextf.fract(), f.floor()+d]
+                ]
+            ]
+        }.into_iter().map(move |rect| (*m, rect.map(|r| r.map(f64::from))))
+    }).flatten().collect();
+
+    dbg!(&rects);
 
     (rects, minval, maxval)
 }
