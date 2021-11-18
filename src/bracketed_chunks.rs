@@ -1,9 +1,18 @@
+enum State {
+    Start,
+    Passthrough,
+    NewShard,
+    Finish,
+    Exhausted
+}
+
 struct BracketedChunks<I> where I: Iterator,
 {
+    state: State,
     min: I::Item,
     max: I::Item,
     size: I::Item,
-    next: Some(I::Item),
+    candidate: Some(I::Item),
     source: I,
 }
 
@@ -13,41 +22,49 @@ where
 {
     type Item = I::Item;
 
+    fn shard(&self, val: Self::Item) -> usize {
+        (val/self.size).floor()
+    }
+
+    fn same_shard(&self, a: Self::Item, b: Self::Item) -> bool {
+        self.shard(a) == self.shard(b)
+    }
+
     fn next(&mut self) -> Option<Self::Item> {
-        match next {
-            None => 
-        }
-        if(!next) {
-            while let next = source.next() if next < min {}
-            return min
-        }
-        if(next == max) {
-            next = None
-            return max
-        }
-        if(next) {
-            let cur = next
-            next = source.next();
-            if(!next) { next = max }
-            // TODO: Make check for > case = bad
-            if((cur/size).floor() < (next/size).floor()) {
-                return (cur/size).floor()
-            } else {
-                return cur
-            }
-        } else {
-            return None
-        }
+        let candidate_shard = self.shard(self.candidate)
+        let (cur, self.next, self.state) = match (self.state, self.candidate) {
+            (State::Start, None) =>
+                (Some(min), source.find(|Some(v)| v >= min), State::Passthrough),
+            (State::Start, _) =>
+                panic!("Invalid state, had candidate at start!"),
+            (State::Passthrough, c) => match source.next() {
+                Some(next) if self.shard(next) == candidate_shard =>
+                    (candidate, next, State::Passthrough),
+                Some(next) =>
+                    (candidate, next, State::NewShard)
+                // TODO: This assumes max is always the end of the last shard
+                // which is probably true for my case but could be more general
+                None => (candidate, max, State::Finish)
+            },
+            (State::NewShard, c) => 
+                ((candidate_shard as Self::Item)*size, c, State::Passthrough),
+            (Finish, _) => (candidate, None, State::Exhausted),
+            (Exhausted, _) => None
+        };
+
+        cur
     }
 }
 
 trait Bracketed: Iterator {
-    fn bracketed_chunks<T>(self, min: T, max: T) -> BracketedChunks<Self>
+    fn bracketed_chunks<T>(self, size: T, min: T, max: T) -> BracketedChunks<Self>
     where Self::Item: T
     {
         BracketedChunks {
-            seen: HashSet::new(),
-            underlying: self,
+            min, max, size,
+            state: State::Start,
+            candidate: None,
+            source: self
         }
     }
 }
