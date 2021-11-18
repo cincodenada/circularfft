@@ -14,7 +14,7 @@ use ordered_float::OrderedFloat;
 use itertools::Itertools;
 
 fn main() -> Result<(), std::io::Error> {
-    let fftsize = 2_usize.pow(4);
+    let fftsize = 2_usize.pow(14);
 
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(fftsize);
@@ -28,6 +28,7 @@ fn main() -> Result<(), std::io::Error> {
         //BitDepth::Sixteen(vec) => vec.into_iter().collect(),
         //BitDepth::TwentyFour(vec) => vec.into_iter().collect(),
         //BitDepth::ThirtyTwoFloat(vec) => vec.into_iter().collect(),
+        // TODO: We probably shouldn't need to collect() here
         BitDepth::ThirtyTwoFloat(vec) => vec
             .chunks(header.channel_count as usize)
             .map(|v| v.into_iter().sum::<f32>()/v.len() as f32)
@@ -37,7 +38,8 @@ fn main() -> Result<(), std::io::Error> {
         BitDepth::Empty => panic!("Ack!")
     };
     dbg!(complex.len());
-    let sampleRate = header.sampling_rate;
+    let sample_rate = header.sampling_rate;
+    let max_freq = sample_rate/2;
     dbg!(&header);
 
     //let floatMax = |a:f32, b:f32| max(OrderedFloat(a), OrderedFloat(b)).into();
@@ -52,7 +54,6 @@ fn main() -> Result<(), std::io::Error> {
     }).collect();
     let time: Vec<Vec<usize>> = starts.iter().map(|start| vec![*start+fftsize/4;fftsize/2]).collect();
 
-    let freq = (0..fftsize).map(|v| (v as f64)).collect::<Vec<f64>>();
     let freqbins: Vec<f32> = (1..fftsize/2).map(|v| (v as f32).log2()).collect::<Vec<_>>();
 
     let r: Vec<f32> = freqbins.iter().map(|v| v.floor()).collect();
@@ -65,8 +66,8 @@ fn main() -> Result<(), std::io::Error> {
     //let flatmag = mag.into_iter().flatten().collect::<Vec<_>>();
     //let flattime = time.into_iter().flatten().collect::<Vec<_>>();
 
-    let (x, y, values) = make_color_mesh(&mag[200], &freqbins, &onefreq, xbinsf);
-    dbg!(make_rectangles(&freq,&mag[200],(16.35, 7902.13)));
+    let (x, y, values) = make_color_mesh(&mag[100], &freqbins, &onefreq, xbinsf);
+    dbg!(make_rectangles(&mag[100], max_freq, (16.35, 7902.13)));
     //let mut window: PistonWindow =
     //    WindowSettings::new("Hello World!", [512; 2])
     //        .build().unwrap();
@@ -144,23 +145,28 @@ fn add_pi(v: &Vec<f32>) -> impl Iterator<Item=&f32> {
     v.iter().chain(std::iter::once(&(std::f32::consts::PI*2.0)))
 }
 
-fn make_rectangles(freq: &[f64], mag: &[f32], clip: (f64, f64)) -> Vec<(Vec<f32>, Vec<Vec<f64>>)> {
+fn make_rectangles(mag: &[f32], max_freq: u32, clip: (f32, f32)) -> Vec<(Vec<f32>, Vec<Vec<f32>>)> {
     let clip_ord = clip.map(OrderedFloat);
-    let clipped_freqs = freq.iter().map(|f| OrderedFloat(*f)).zip(mag.iter())
+    let freqs = mag.iter().enumerate()
+        .skip(1).map(|(idx, m)| (OrderedFloat(idx as f32*(max_freq as f32/mag.len() as f32)), m))
         .filter(|(f, _)| *f > clip_ord.0 && *f < clip_ord.1)
         .map(|(f, m)| (f.into(), m));
-    dbg!(&freq);
     let boxed = std::iter::once((clip.0, &mag[0]))
-        .chain(clipped_freqs)
-        .chain(std::iter::once((clip.1, &mag[mag.len()-1])));
+        .chain(freqs)
+        .chain(std::iter::once((clip.1, &mag[mag.len()-1])))
+        .map(|(f, m)| (f.log2(), m));
+    dbg!(&boxed.clone().collect::<Vec<_>>());
 
-    boxed.tuple_windows().map(|((f, m), (nextf, nextm))| (
-        vec![1.0,0.0,0.0,1.0],
-        vec![
-            vec![f.into(), f.floor()],
-            vec![f.into(), f.floor()+1.0],
-            vec![nextf.into(), f.floor()+1.0],
-            vec![nextf.into(), f.floor()]
-        ].into_iter().map(|v| v.into_iter().map(|f| f as f64).collect()).collect()
-    )).collect()
+    boxed.tuple_windows().map(|((f, m), (nextf, nextm))| {
+        let height = match (nextf.floor() - f.floor()) { 0.0 => 1.0, d => d };
+        (
+            vec![1.0,0.0,0.0,1.0],
+            vec![
+                vec![f.into(), f.floor()],
+                vec![f.into(), f.floor()+height],
+                vec![nextf.into(), f.floor()+height],
+                vec![nextf.into(), f.floor()]
+            ].into_iter().map(|v| v.into_iter().map(|f| f as f32).collect()).collect()
+        )
+    }).collect()
 }
