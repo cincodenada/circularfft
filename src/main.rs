@@ -45,11 +45,20 @@ fn main() -> Result<(), std::io::Error> {
 
     let width=complex.len()/fftsize*2-1;
 
+    let mut absmin = f32::INFINITY;
+    let mut absmax = f32::NEG_INFINITY;
     let starts: Vec<usize> = (0..width).map(|v| v*fftsize/2).collect();
     let mag: Vec<Vec<f32>> = starts.iter().map(|start| {
         let mut buffer = complex[*start..start+fftsize].to_vec();
         fft.process(&mut buffer);
-        buffer.into_iter().take(fftsize/2).map(|v| v.norm().log2()).collect::<Vec<f32>>()
+        buffer.into_iter().take(fftsize/2)
+            .map(|v| v.norm().log2())
+            .map(|v| {
+                if v < absmin { absmin = v }
+                if v > absmax { absmax = v }
+                v
+            })
+            .collect::<Vec<f32>>()
     }).collect();
     let time: Vec<Vec<usize>> = starts.iter().map(|start| vec![*start+fftsize/4;fftsize/2]).collect();
 
@@ -66,8 +75,11 @@ fn main() -> Result<(), std::io::Error> {
     //let flattime = time.into_iter().flatten().collect::<Vec<_>>();
 
     let makeColorer = |min, max| {
-        let range = max-min;
-        move |val| [(val-min)/range, 0.0, 0.0, 1.0]
+        let halfrange = (max-min)/2.0;
+        move |val| match (val-min)/halfrange {
+            v @ 0.0..=1.0 => [0.0, v/2.0, 0.0, 1.0],
+            v => [v-1.0, v/2.0, 0.0, 1.0],
+        }
     };
 
     //let (x, y, values) = make_color_mesh(&mag[100], &freqbins, &onefreq, xbinsf);
@@ -77,6 +89,7 @@ fn main() -> Result<(), std::io::Error> {
     let mapped_span = mapped_range.1 - mapped_range.0;
 
     let mut slice = mag.iter().cycle();
+    let colorer = makeColorer(absmin, absmax);
 
     let mut window: PistonWindow =
         WindowSettings::new("Hello World!", [512; 2])
@@ -85,7 +98,6 @@ fn main() -> Result<(), std::io::Error> {
         window.draw_2d(&e, |c, g, _| {
             clear([0.5, 0.5, 0.5, 1.0], g);
             let (rects, minval, maxval) = make_rectangles(slice.next().unwrap(), max_freq, freq_range);
-            let colorer = makeColorer(minval, maxval);
             let dims = c.viewport.unwrap().draw_size.map(f64::from);
             rects.into_iter().map(|(val, points)| polygon(
                 colorer(val),
