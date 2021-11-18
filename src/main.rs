@@ -13,7 +13,7 @@ use ordered_float::OrderedFloat;
 use itertools::Itertools;
 
 fn main() -> Result<(), std::io::Error> {
-    let fftsize = 2_usize.pow(5);
+    let fftsize = 2_usize.pow(14);
 
     let mut planner = FftPlanner::new();
     let fft = planner.plan_fft_forward(fftsize);
