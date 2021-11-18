@@ -9,7 +9,6 @@ use std::path::Path;
 use wav::BitDepth;
 use std::convert::TryFrom;
 use inline_python::python;
-use std::cmp::max;
 use ordered_float::OrderedFloat;
 use itertools::Itertools;
 
@@ -66,6 +65,11 @@ fn main() -> Result<(), std::io::Error> {
     //let flatmag = mag.into_iter().flatten().collect::<Vec<_>>();
     //let flattime = time.into_iter().flatten().collect::<Vec<_>>();
 
+    let makeColorer = |min, max| {
+        let range = max-min;
+        move |val| [(val-min)/range, 0.0, 0.0, 1.0]
+    };
+
     let (x, y, values) = make_color_mesh(&mag[100], &freqbins, &onefreq, xbinsf);
     let mut window: PistonWindow =
         WindowSettings::new("Hello World!", [512; 2])
@@ -73,7 +77,9 @@ fn main() -> Result<(), std::io::Error> {
     while let Some(e) = window.next() {
         window.draw_2d(&e, |c, g, _| {
             clear([0.5, 0.5, 0.5, 1.0], g);
-            make_rectangles(&mag[100], max_freq, (16.35, 7902.13)).into_iter().map(|(color, points)| polygon(color, &points, c.transform, g)).last()
+            let (rects, minval, maxval) = make_rectangles(&mag[100], max_freq, (16.35, 7902.13));
+            let colorer = makeColorer(minval, maxval);
+            rects.into_iter().map(|(val, points)| polygon(colorer(val), &points, c.transform, g)).last();
         });
     }
 
@@ -144,7 +150,7 @@ fn add_pi(v: &Vec<f32>) -> impl Iterator<Item=&f32> {
     v.iter().chain(std::iter::once(&(std::f32::consts::PI*2.0)))
 }
 
-fn make_rectangles(mag: &[f32], max_freq: u32, clip: (f32, f32)) -> Vec<([f32;4], [[f64;2];4])> {
+fn make_rectangles(mag: &[f32], max_freq: u32, clip: (f32, f32)) -> (Vec<(f32, [[f64;2];4])>, f32, f32) {
     let clip_ord = clip.map(OrderedFloat);
     let freqs = mag.iter().enumerate()
         .skip(1).map(|(idx, m)| (OrderedFloat(idx as f32*(max_freq as f32/mag.len() as f32)), m))
@@ -156,10 +162,14 @@ fn make_rectangles(mag: &[f32], max_freq: u32, clip: (f32, f32)) -> Vec<([f32;4]
         .map(|(f, m)| (f.log2(), m));
     //dbg!(&boxed.clone().collect::<Vec<_>>());
 
-    boxed.tuple_windows().map(|((f, m), (nextf, nextm))| {
+    let mut minval = f32::INFINITY;
+    let mut maxval = f32::NEG_INFINITY;
+    let rects = boxed.tuple_windows().map(|((f, m), (nextf, nextm))| {
         let height = match nextf.floor() - f.floor() { 0.0 => 1.0, d => d };
+        if m < &minval { minval = *m }
+        if m > &maxval { maxval = *m }
         (
-            [1.0,0.0,0.0,1.0],
+            *m,
             [
                 [f.into(), f.floor()],
                 [f.into(), f.floor()+height],
@@ -167,5 +177,7 @@ fn make_rectangles(mag: &[f32], max_freq: u32, clip: (f32, f32)) -> Vec<([f32;4]
                 [nextf.into(), f.floor()]
             ].map(|v| v.map(|f| f as f64))
         )
-    }).collect()
+    }).collect();
+
+    (rects, minval, maxval)
 }
