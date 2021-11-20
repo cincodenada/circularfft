@@ -29,14 +29,16 @@ pub struct BracketedChunks<I> where I: Iterator
 impl<I> Iterator for BracketedChunks<I>
 where
     I: Iterator,
-    I::Item: Shardable + PartialOrd
+    I::Item: Shardable + PartialOrd + Copy
 {
     type Item = I::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (cur, next, state) = match (self.state, self.candidate) {
-            (State::Start, None) =>
-                (Some(self.min), self.source.find(|v| v >= &self.min), State::Passthrough),
+        let (cur, next, state) = match (&self.state, &self.candidate) {
+            (State::Start, None) => {
+                let min = self.min;
+                (Some(min), self.source.find(|v| *v >= min), State::Passthrough)
+            },
             (State::Start, _) =>
                 panic!("Invalid state, had candidate at start!"),
             (State::Passthrough, Some(c)) => match self.source.next() {
@@ -48,8 +50,10 @@ where
                 // which is probably true for my case but could be more general
                 None => (self.candidate, Some(self.max), State::Finish)
             },
+            (State::Passthrough, None) =>
+                panic!("Invalid state, passthrough without candidate!"),
             (State::NewShard, Some(c)) => 
-                (Some(Self::Item::from_shard(c.shard())), Some(c), State::Passthrough),
+                (Some(Self::Item::from_shard(c.shard())), self.candidate, State::Passthrough),
             (State::NewShard, None) =>
                 panic!("Invalid state, new shard without candidate!"),
             (State::Finish, _) => (self.candidate, None, State::Exhausted),
