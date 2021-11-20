@@ -3,7 +3,7 @@ extern crate tuple;
 
 mod bracketed_chunks;
 
-use bracketed_chunks::{BracketedChunks, Shardable};
+use bracketed_chunks::*;
 
 use piston_window::*;
 use tuple::*;
@@ -24,6 +24,53 @@ impl Shardable for f32 {
     fn from_shard(shard: usize) -> f32 { shard as f32 }
 }
 
+type FftFreq = f32;
+type FftMag = f32;
+type FftPoint = Complex<FftMag>;
+
+struct FftBin {
+    val: FftPoint,
+    freq: FftFreq,
+    mag: FftMag
+}
+impl FftBin {
+    fn from_sample(idx: usize, val: FftPoint, max_freq: FftFreq) -> FftBin {
+        FftBin {
+            freq: idx as FftFreq/max_freq,
+            val,
+            mag: val.norm()
+        }
+    }
+}
+
+struct FftResult {
+    sample_rate: u32,
+    fft_size: usize,
+    half_size: usize,
+    bins: Vec<FftBin>,
+    max_freq: FftFreq,
+    max_mag: f32,
+    min_mag: f32
+}
+impl FftResult {
+    fn from_bins(sample_rate: u32, bins: Vec<FftPoint>) -> FftResult {
+        let mut min_mag = f32::INFINITY;
+        let mut max_mag = f32::NEG_INFINITY;
+        let fft_size = bins.len();
+        let half_size = fft_size/2;
+        let max_freq = sample_rate as FftFreq/2.0;
+        let bins = bins.into_iter().take(half_size).enumerate()
+            .map(|(idx, v)| {
+                let bin = FftBin::from_sample(idx, v, max_freq);
+                if bin.mag < min_mag { min_mag = bin.mag }
+                if bin.mag > max_mag { max_mag = bin.mag }
+                bin
+            }).collect();
+
+        FftResult { sample_rate, fft_size, half_size, max_freq, bins, min_mag, max_mag }
+    }
+}
+
 fn main() -> Result<(), std::io::Error> {
     let fftsize = 2_usize.pow(14);
 
@@ -32,8 +79,6 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut inp_file = File::open(Path::new("input.wav"))?;
     let (header, data) = wav::read(&mut inp_file)?;
-
-    type FftPoint = Complex<f32>;
 
     let complex : Vec<FftPoint> = match data {
         //BitDepth::Sixteen(vec) => vec.into_iter().collect(),
@@ -60,17 +105,13 @@ fn main() -> Result<(), std::io::Error> {
     let mut absmin = f32::INFINITY;
     let mut absmax = f32::NEG_INFINITY;
     let starts: Vec<usize> = (0..width).map(|v| v*fftsize/2).collect();
-    let mag: Vec<Vec<f32>> = starts.iter().map(|start| {
+    let mag: Vec<FftResult> = starts.iter().map(|start| {
         let mut buffer = complex[*start..start+fftsize].to_vec();
         fft.process(&mut buffer);
-        buffer.into_iter().take(fftsize/2)
-            .map(|v| v.norm().log2())
-            .map(|v| {
-                if v < absmin { absmin = v }
-                if v > absmax { absmax = v }
-                v
-            })
-            .collect::<Vec<f32>>()
+        let col = FftResult::from_bins(sample_rate, buffer);
+        if col.min_mag < absmin { absmin = col.min_mag }
+        if col.max_mag > absmax { absmax = col.max_mag }
+        col
     }).collect();
     let time: Vec<Vec<usize>> = starts.iter().map(|start| vec![*start+fftsize/4;fftsize/2]).collect();
 
@@ -109,7 +150,7 @@ fn main() -> Result<(), std::io::Error> {
     while let Some(e) = window.next() {
         window.draw_2d(&e, |c, g, _| {
             clear([0.5, 0.5, 0.5, 1.0], g);
-            let (rects, minval, maxval) = make_rectangles(slice.next().unwrap(), max_freq, freq_range);
+            let (rects, minval, maxval) = make_rectangles(slice.next().unwrap(), freq_range);
             let dims = c.viewport.unwrap().draw_size.map(f64::from);
             rects.into_iter().map(|(val, points)| polygon(
                 colorer(val),
@@ -200,14 +241,11 @@ fn dbgIter<I, T>(it: I) -> impl Iterator<Item=T> where I: Iterator<Item=T>, T: s
     collected.into_iter()
 }
 
-fn make_rectangles(mag: &[f32], max_freq: u32, clip: (f32, f32)) -> (Vec<(f32, [[f64;2];4])>, f32, f32) {
-    let clip_ord = clip.map(OrderedFloat);
-    let freqs = mag.iter().enumerate()
-        .skip(1).map(|(idx, m)| (OrderedFloat(idx as f32*(max_freq as f32/mag.len() as f32)), m))
-        .filter(|(f, _)| *f >= clip_ord.0 && *f < clip_ord.1)
-        .map(|(f, m)| (f.into(), m));
-    let boxed = bracket(freqs, clip.0, clip.1)
-        .map(|(f, m)| ((f-clip.0+1.0).log2(), m));
+fn make_rectangles(col: &FftResult, clip: (f32, f32)) -> (Vec<(f32, [[f64;2];4])>, f32, f32) {
+    let bins = col.bins.iter().skip(1)
+        .filter(|bin| bin.freq >= clip.0 && bin.freq < clip.1);
+    let boxed = bins.bracketed_chunks(clip.0, clip.1)
+        .map(|bin| ((bin.freq-clip.0+1.0).log2(), bin.mag.log2()));
     // TODO: Do....not that ^^
     //dbg!(&boxed.clone().collect::<Vec<_>>());
 
