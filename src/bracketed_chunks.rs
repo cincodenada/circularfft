@@ -17,19 +17,21 @@ pub trait Shardable {
     }
 }
 
-pub struct BracketedChunks<I> where I: Iterator
+pub struct BracketedChunks<I, R>
+  where I: Iterator, R: PartialOrd<I::Item>
 {
     state: State,
-    min: I::Item,
-    max: I::Item,
+    min: R,
+    max: R,
     candidate: Option<I::Item>,
     source: I,
 }
 
-impl<I> Iterator for BracketedChunks<I>
+impl<I, R> Iterator for BracketedChunks<I, R>
 where
     I: Iterator,
-    I::Item: Shardable + PartialOrd + Copy
+    I::Item: Shardable + Copy,
+    R: PartialOrd<I::Item>
 {
     type Item = I::Item;
 
@@ -37,7 +39,7 @@ where
         let (cur, next, state) = match (&self.state, &self.candidate) {
             (State::Start, None) => {
                 let min = self.min;
-                (Some(min), self.source.find(|v| *v >= min), State::Passthrough)
+                (Some(min), self.source.find(|v| min < *v), State::Passthrough)
             },
             (State::Start, _) =>
                 panic!("Invalid state, had candidate at start!"),
@@ -67,8 +69,9 @@ where
     }
 }
 
-trait Bracketed: Iterator {
-    fn bracketed_chunks(self, min: Self::Item, max: Self::Item) -> BracketedChunks<Self> where Self:Sized {
+pub trait Bracketed: Iterator {
+    fn bracketed_chunks<T>(self, min: T, max: T) -> BracketedChunks<Self, T>
+        where Self:Sized, T: PartialOrd<Self::Item> {
         BracketedChunks {
             min, max,
             state: State::Start,
