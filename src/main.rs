@@ -3,6 +3,8 @@ extern crate tuple;
 
 mod bracketed_chunks;
 
+use bracketed_chunks::{BracketedChunks, Shardable};
+
 use piston_window::*;
 use tuple::*;
 
@@ -14,6 +16,13 @@ use std::convert::TryFrom;
 use inline_python::python;
 use ordered_float::OrderedFloat;
 use itertools::Itertools;
+
+impl Shardable for f32 {
+    fn shard(&self) -> usize {
+        self.floor() as usize
+    }
+    fn from_shard(shard: usize) -> f32 { shard as f32 }
+}
 
 fn main() -> Result<(), std::io::Error> {
     let fftsize = 2_usize.pow(14);

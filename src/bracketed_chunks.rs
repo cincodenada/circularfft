@@ -8,20 +8,20 @@ enum State {
     Exhausted
 }
 
-trait Shardable {
+pub trait Shardable {
     fn shard(&self) -> usize;
+    fn from_shard(shard: usize) -> Self;
     
     fn same_shard(&self, other: &Self) -> bool {
         self.shard() == other.shard()
     }
 }
 
-struct BracketedChunks<I> where I: Iterator
+pub struct BracketedChunks<I> where I: Iterator
 {
     state: State,
     min: I::Item,
     max: I::Item,
-    size: I::Item,
     candidate: Option<I::Item>,
     source: I,
 }
@@ -48,21 +48,23 @@ where
                 // which is probably true for my case but could be more general
                 None => (self.candidate, Some(self.max), State::Finish)
             },
-            (State::NewShard, c) => 
-                ((self.shard(c) as Self::Item)*self.size, c, State::Passthrough),
-            (Finish, _) => (self.candidate, None, State::Exhausted),
-            (Exhausted, _) => (None, None, State::Exhausted)
+            (State::NewShard, Some(c)) => 
+                (Some(Self::Item::from_shard(c.shard())), Some(c), State::Passthrough),
+            (State::NewShard, None) =>
+                panic!("Invalid state, new shard without candidate!"),
+            (State::Finish, _) => (self.candidate, None, State::Exhausted),
+            (State::Exhausted, _) => (None, None, State::Exhausted)
         };
-        self.next = next;
+        self.candidate = next;
         self.state = state;
         cur
     }
 }
 
 trait Bracketed: Iterator {
-    fn bracketed_chunks<T>(self, size: T, min: T, max: T) -> BracketedChunks<Self> where Self:Sized {
+    fn bracketed_chunks(self, min: Self::Item, max: Self::Item) -> BracketedChunks<Self> where Self:Sized {
         BracketedChunks {
-            min, max, size,
+            min, max,
             state: State::Start,
             candidate: None,
             source: self
