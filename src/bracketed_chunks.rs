@@ -1,9 +1,19 @@
+use std::cmp::PartialOrd;
+
 enum State {
     Start,
     Passthrough,
     NewShard,
     Finish,
     Exhausted
+}
+
+trait Shardable {
+    fn shard(&self) -> usize;
+    
+    fn same_shard(&self, other: &Self) -> bool {
+        self.shard() == other.shard()
+    }
 }
 
 struct BracketedChunks<I> where I: Iterator
@@ -15,32 +25,23 @@ struct BracketedChunks<I> where I: Iterator
     candidate: Option<I::Item>,
     source: I,
 }
-impl<I> BracketedChunks<I> where I: Iterator {
-    fn shard(&self, val: I::Item) -> usize {
-        (val/self.size).floor()
-    }
-
-    fn same_shard(&self, a: I::Item, b: I::Item) -> bool {
-        self.shard(a) == self.shard(b)
-    }
-}
 
 impl<I> Iterator for BracketedChunks<I>
 where
-    I: Iterator
+    I: Iterator,
+    I::Item: Shardable + PartialOrd
 {
     type Item = I::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let candidate_shard = self.shard(self.candidate);
         let (cur, next, state) = match (self.state, self.candidate) {
             (State::Start, None) =>
                 (Some(self.min), self.source.find(|Some(v)| v >= self.min), State::Passthrough),
             (State::Start, _) =>
                 panic!("Invalid state, had candidate at start!"),
-            (State::Passthrough, c) => match self.source.next() {
-                Some(next) if self.shard(next) == candidate_shard =>
-                    (self.candidate, next, State::Passthrough),
+            (State::Passthrough, Some(c)) => match self.source.next() {
+                Some(next) if next.same_shard(&c) =>
+                    (self.candidate, Some(next), State::Passthrough),
                 Some(next) =>
                     (self.candidate, next, State::NewShard),
                 // TODO: This assumes max is always the end of the last shard
