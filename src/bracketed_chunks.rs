@@ -36,22 +36,22 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         let (cur, next, state) = match (self.state, self.candidate) {
             (State::Start, None) =>
-                (Some(self.min), self.source.find(|Some(v)| v >= self.min), State::Passthrough),
+                (Some(self.min), self.source.find(|v| v >= &self.min), State::Passthrough),
             (State::Start, _) =>
                 panic!("Invalid state, had candidate at start!"),
             (State::Passthrough, Some(c)) => match self.source.next() {
                 Some(next) if next.same_shard(&c) =>
                     (self.candidate, Some(next), State::Passthrough),
                 Some(next) =>
-                    (self.candidate, next, State::NewShard),
+                    (self.candidate, Some(next), State::NewShard),
                 // TODO: This assumes max is always the end of the last shard
                 // which is probably true for my case but could be more general
-                None => (self.candidate, self.max, State::Finish)
+                None => (self.candidate, Some(self.max), State::Finish)
             },
             (State::NewShard, c) => 
-                ((candidate_shard as Self::Item)*self.size, c, State::Passthrough),
+                ((self.shard(c) as Self::Item)*self.size, c, State::Passthrough),
             (Finish, _) => (self.candidate, None, State::Exhausted),
-            (Exhausted, _) => None
+            (Exhausted, _) => (None, None, State::Exhausted)
         };
         self.next = next;
         self.state = state;
