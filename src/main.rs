@@ -10,6 +10,9 @@ use spectrogram as spec;
 use piston_window::*;
 use tuple::*;
 
+use druid::widget::{Button, Flex, Label};
+use druid::{AppLauncher, LocalizedString, PlatformError, Widget, WidgetExt, WindowDesc, Data};
+
 use std::env;
 use std::time::{Duration, SystemTime};
 use std::fs::File;
@@ -92,11 +95,56 @@ fn main() -> Result<(), std::io::Error> {
 
     let colorer = Colorer::new(spectrogram.min_mag, spectrogram.max_mag);
 
-    make_window(&spectrogram, colorer, Duration::from_millis(ms_per_col.into()));
+    make_druid_window(&spectrogram, colorer, Duration::from_millis(ms_per_col.into()));
+    //make_window(&spectrogram, colorer, Duration::from_millis(ms_per_col.into()));
     //make_circle_plot(&spectrogram);
     //make_rect_plot(&spectrogram);
 
     Ok(())
+}
+
+#[derive(Clone, Data)]
+struct Counter(i32);
+
+fn make_druid_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>, spf: std::time::Duration) {
+    // Window builder. We set title and size
+    let main_window = WindowDesc::new(build_druid_window)
+        .title("Spectrogram Toy")
+        .window_size((200.0, 100.0));
+
+    // Data to be used in the app (=state)
+    let data = Counter(0);
+
+    // Run the app
+    AppLauncher::with_window(main_window)
+        .use_simple_logger() // Neat!
+        .launch(data);
+}
+
+fn build_druid_window() -> impl Widget<Counter> {
+    // The label text will be computed dynamically based on the current locale and count
+    let text = LocalizedString::new("hello-counter")
+        .with_arg("count", |data: &Counter, _env| (*data).0.into());
+    let label = Label::new(text).padding(5.0).center();
+
+    // Two buttons with on_click callback
+    let button_plus = Button::new("+1")
+        .on_click(|_ctx, data: &mut Counter, _env| (*data).0 += 1)
+        .padding(5.0);
+    let button_minus = Button::new("-1")
+        .on_click(|_ctx, data: &mut Counter, _env| (*data).0 -= 1)
+        .padding(5.0);
+
+    // Container for the two buttons
+    let flex = Flex::row()
+        .with_child(button_plus)
+        .with_spacer(1.0)
+        .with_child(button_minus);
+
+    // Container for the whole UI
+    Flex::column()
+        .with_child(label)
+        .with_child(flex)
 }
 
 fn make_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>, spf: std::time::Duration) {
