@@ -26,7 +26,7 @@ impl Sharder<&FftBin> for OctaveSharder {
         match *freq {
             v if v.freq < self.min => None,
             v if v.freq > self.max => None,
-            v => Some(v.freq.log2().floor() as usize)
+            v => Some(v.freq_log.floor() as usize)
         }
     }
     /*
@@ -56,13 +56,15 @@ type FftPoint = Complex<FftMag>;
 struct FftBin {
     val: FftPoint,
     freq: FftFreq,
-    mag: FftMag
+    mag: FftMag,
+    freq_log: FftFreq
 }
 impl FftBin {
     fn from_sample(idx: usize, val: FftPoint, max_freq: FftFreq) -> FftBin {
+        let freq = idx as FftFreq/max_freq;
         FftBin {
-            freq: idx as FftFreq/max_freq,
-            val,
+            freq, val,
+            freq_log: freq.log2(),
             mag: val.norm()
         }
     }
@@ -270,32 +272,46 @@ fn dbgIter<I, T>(it: I) -> impl Iterator<Item=T> where I: Iterator<Item=T>, T: s
 
 fn make_rectangles(col: &FftResult, clip: (f32, f32)) -> Vec<(f32, [[f64;2];4])> {
     let sharder = OctaveSharder { min: clip.0, max: clip.1 };
-    let from_shard = |shard| 2_u32.pow(shard as u32) as f32;
+    let bounds = (0.0, 1.0);
     col.bins.iter().skip(1)
         .filter(|bin| bin.freq >= clip.0 && bin.freq < clip.1)
         .bracketed_chunks(sharder)
         .tuple_windows()
-        .filter_map(|v| {
+        .map(|v| {
             match v {
-                (ShardResult::Start(shard), ShardResult::Item(bin)) => Some([
-                    [from_shard(shard), bin.freq.floor()],
-                    [from_shard(shard), bin.freq.floor()+1.0],
-                    [bin.freq.fract(), bin.freq.floor()+1.0],
-                    [bin.freq.fract(), bin.freq.floor()]
-                ]),
-                (ShardResult::Item(start), ShardResult::Item(end)) => Some([
-                    [start.freq.fract(), start.freq.floor()],
-                    [start.freq.fract(), start.freq.floor()+1.0],
-                    [end.freq.fract(), start.freq.floor()+1.0],
-                    [end.freq.fract(), start.freq.floor()]
-                ]),
-                (ShardResult::Item(bin), ShardResult::End(shard)) => Some([
-                    [bin.freq.fract(), bin.freq.floor()],
-                    [bin.freq.fract(), bin.freq.floor()+1.0],
-                    [from_shard(shard+1), bin.freq.floor()+1.0],
-                    [from_shard(shard+1), bin.freq.floor()]
-                ]),
-                _ => None
-            }
-        }).collect()
+                (ShardResult::Start(cur_shard, cur), ShardResult::Start(next_shard, next)) => vec![
+                    (
+                        cur.mag,
+                        [
+                            [bounds.0, cur_shard as f32],
+                            [bounds.0, next_shard as f32],
+                            [cur.freq.fract(), next_shard as f32],
+                            [cur.freq.fract(), cur_shard as f32]
+                        ]
+                    ),
+                    (
+                        cur.mag,
+                        [
+                            [cur.freq.fract(), cur_shard as f32],
+                            [cur.freq.fract(), next_shard as f32],
+                            [bounds.1, next_shard as f32],
+                            [bounds.1, cur_shard as f32]
+                        ]
+                    )
+                ],
+                (ShardResult::Start(prev_shard, prev), ShardResult::Item(cur_shard, cur)) |
+                (ShardResult::Item(prev_shard, prev), ShardResult::Item(cur_shard, cur)) => vec![
+                    (
+                        cur.mag,
+                        [
+                            [prev.freq.fract(), cur_shard as f32],
+                            [prev.freq.fract(), (cur_shard + 1) as f32],
+                            [cur.freq.fract(), (cur_shard + 1) as f32],
+                            [cur.freq.fract(), cur_shard as f32]
+                        ]
+                    )
+                ],
+                _ => vec![]
+            }.into_iter().map(|(m, rect)| (m, rect.map(|p| p.map(|c| c as f64))))
+        }).flatten().collect()
 }

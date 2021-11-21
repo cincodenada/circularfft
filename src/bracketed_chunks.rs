@@ -1,16 +1,14 @@
 enum State {
     Start,
     Passthrough,
-    StartShard,
-    Finish,
     Exhausted
 }
 
 #[derive(Debug,PartialEq,Clone)]
 pub enum ShardResult<T, U> {
-  Start(U),
-  Item(T),
-  End(U)
+  Start(U, T),
+  Item(U, T),
+  End(U, T)
 }
 
 pub trait Sharder<T: ?Sized>: Sized {
@@ -26,7 +24,7 @@ pub struct BracketedChunks<I, S>
 {
     state: State,
     sharder: S,
-    candidate: Option<ShardResult<I::Item, usize>>,
+    candidate: Option<I::Item>,
     source: I,
 }
 
@@ -46,26 +44,26 @@ where
                 let first = self.source.find(|v| sharder.shard(&v).is_some()).unwrap();
                 (
                   State::Passthrough,
-                  Some(ShardResult::Start(self.sharder.shard(&first).unwrap())),
-                  Some(ShardResult::Item(first))
+                  Some(ShardResult::Start(self.sharder.shard(&first).unwrap(), first)),
+                  self.source.next()
                 )
             },
             (State::Start, Some(_)) =>
                 panic!("Invalid state, Start with candidate!"),
 
-            (State::Passthrough, Some(ShardResult::Item(c))) => match (self.sharder.shard(&c), self.source.next()) {
+            (State::Passthrough, Some(c)) => match (self.sharder.shard(&c), self.source.next()) {
                 // Cur is valid, and we have a next
                 (Some(shard), Some(next)) => match self.sharder.shard(&next) {
                     Some(next_shard) if shard == next_shard =>
-                        (State::Passthrough, Some(ShardResult::Item(c)), Some(ShardResult::Item(next))),
+                        (State::Passthrough, Some(ShardResult::Item(shard, c)), Some(next)),
                     Some(_) =>
-                        (State::StartShard, Some(ShardResult::Item(c)), Some(ShardResult::Item(next))),
+                        (State::Passthrough, Some(ShardResult::Start(shard, c)), Some(next)),
                     None => 
-                        (State::Finish, Some(ShardResult::Item(c)), Some(ShardResult::End(shard)))
+                        (State::Exhausted, Some(ShardResult::End(shard, c)), None)
                 },
                 // Cur is valid, but no next
                 (Some(shard), None) =>
-                    (State::Finish, Some(ShardResult::Item(c)), Some(ShardResult::End(shard))),
+                    (State::Exhausted, Some(ShardResult::End(shard, c)), None),
                 // Cur is invalid
                 (None, _) =>
                     panic!("Invalid state, passthrough with out-of-range value!")
@@ -74,20 +72,6 @@ where
               panic!("Invalid state, passthrough with non-item result!"),
             (State::Passthrough, None) =>
                 panic!("Invalid state, passthrough without candidate!"),
-
-            (State::StartShard, Some(ShardResult::Item(c))) =>
-                (State::Passthrough, Some(ShardResult::Start(self.sharder.shard(&c).unwrap())), Some(ShardResult::Item(c))),
-            (State::StartShard, Some(_)) =>
-                panic!("Invalid state, shard start with non-item result!"),
-            (State::StartShard, None) =>
-                panic!("Invalid state, new shard without candidate!"),
-
-            (State::Finish, Some(ShardResult::End(c))) =>
-                (State::Exhausted, Some(ShardResult::End(c)), None),
-            (State::Finish, Some(_)) =>
-                panic!("Invalid state, finish with non-end result!"),
-            (State::Finish, None) =>
-                panic!("Invalid state, finish with none result!"),
 
             (State::Exhausted, _) =>
                 (State::Exhausted, None, None)
@@ -151,15 +135,9 @@ mod tests {
         let bracketed = dbgIter((5..50).step_by(10)
           .bracketed_chunks(IntSharder { min: 10, max: 40, span: 10 }));
         assert!(itertools::equal([
-            ShardResult::Start(1),
-            ShardResult::Item(15),
-            ShardResult::End(1),
-            ShardResult::Start(2),
-            ShardResult::Item(25),
-            ShardResult::End(2),
-            ShardResult::Start(3),
-            ShardResult::Item(35),
-            ShardResult::End(3)
+            ShardResult::Start(1, 15),
+            ShardResult::Start(2, 25),
+            ShardResult::End(3, 35)
         ], bracketed));
     }
 }
