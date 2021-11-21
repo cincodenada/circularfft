@@ -8,8 +8,8 @@ enum State {
 
 pub trait Sharder<T: ?Sized>: Sized {
     fn shard(&self, subj: &T) -> Option<usize>;
-    fn shard_start(&self, shard: usize) -> Self;
-    fn shard_end(&self, shard: usize) -> Self;
+    fn shard_start(&self, shard: usize) -> T;
+    fn shard_end(&self, shard: usize) -> T;
 }
 
 pub struct BracketedChunks<I, S>
@@ -32,24 +32,25 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         let (state, cur, next) = match (&self.state, &self.candidate) {
             (State::Start, None) => {
-                let first = self.source.find(|v| v.shard().is_some()).unwrap();
-                (State::Passthrough, Some(Sharder::shard_start(first.shard().unwrap())), Some(first))
+                let sharder = &self.sharder;
+                let first = self.source.find(|v| sharder.shard(&v).is_some()).unwrap();
+                (State::Passthrough, Some(self.sharder.shard_start(self.sharder.shard(&first).unwrap())), Some(first))
             },
             (State::Start, Some(_)) =>
                 panic!("Invalid state, Start with candidate!"),
-            (State::Passthrough, Some(c)) => match (c.shard(), self.source.next()) {
+            (State::Passthrough, Some(c)) => match (self.sharder.shard(&c), self.source.next()) {
                 // Cur is valid, and we have a next
-                (Some(shard), Some(next)) => match next.shard() {
+                (Some(shard), Some(next)) => match self.sharder.shard(&next) {
                     Some(next_shard) if shard == next_shard =>
                         (State::Passthrough, self.candidate, Some(next)),
                     Some(_) =>
                         (State::NewShard, self.candidate, Some(next)),
                     None => 
-                        (State::Finish, self.candidate, Some(Sharder::shard_end(shard)))
+                        (State::Finish, self.candidate, Some(self.sharder.shard_end(shard)))
                 },
                 // Cur is valid, but no next
                 (Some(shard), None) =>
-                    (State::Finish, self.candidate, Some(Sharder::shard_end(shard))),
+                    (State::Finish, self.candidate, Some(self.sharder.shard_end(shard))),
                 // Cur is invalid
                 (None, _) =>
                     panic!("Invalid state, passthrough with out-of-range value!")
@@ -57,7 +58,7 @@ where
             (State::Passthrough, None) =>
                 panic!("Invalid state, passthrough without candidate!"),
             (State::NewShard, Some(c)) => 
-                (State::Passthrough, Some(Self::Item::shard_start(c.shard().unwrap())), self.candidate),
+                (State::Passthrough, Some(self.sharder.shard_start(self.sharder.shard(&c).unwrap())), self.candidate),
             (State::NewShard, None) =>
                 panic!("Invalid state, new shard without candidate!"),
             (State::Finish, _) => 
@@ -104,21 +105,22 @@ mod tests {
     fn partitions_things() {
         struct IntSharder {
             min: u32,
-            max: u32
+            max: u32,
+            span: u32
         }
         impl Sharder<u32> for IntSharder {
             fn shard(&self, val: &u32) -> Option<usize> {
                 match val {
                     v if *v < self.min => None,
                     v if *v > self.max => None,
-                    v => Some(v/10)
+                    v => Some((v/self.span) as usize)
                 }
             }
-            fn shard_start(&self, shard: usize) -> u32 { shard*10 }
-            fn shard_end(&self, shard: usize) -> u32 { (shard+1)*10 }
+            fn shard_start(&self, shard: usize) -> u32 { shard as u32*self.span }
+            fn shard_end(&self, shard: usize) -> u32 { (shard as u32+1)*self.span }
         }
 
-        let bracketed = dbgIter((5..50).step_by(10).bracketed_chunks());
+        let bracketed = dbgIter((5..50).step_by(10).bracketed_chunks(IntSharder { min: 10, max: 40, span: 10 }));
         assert!(itertools::equal([10,15,20,25,30,35,40], bracketed));
     }
 }
