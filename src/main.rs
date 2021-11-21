@@ -173,10 +173,10 @@ fn make_rect_plot(spectrogram: &spec::Spectrogram) {
     //let freqbins: Vec<f32> = (0..fftsize/2).map(|v| floatMax((v as f32).log10(),0.0)).collect::<Vec<_>>();
     //let freq: Vec<f32> = starts.iter().map(|_| freqbins.to_vec()).flatten().collect();
 
-    let mut vals = spectrogram.columns.iter().enumerate()
-        .map(|(idx, c)| c.bins.iter().skip(1)
-            .map(move |b| (idx, b.freq, b.mag.log2()))
-        ).flatten();
+    let cols = spectrogram.columns.iter().enumerate();
+    let mut vals = cols.clone().skip(1).map(|(idx, c)| c.bins.iter().skip(1)
+        .map(move |b| (idx*spectrogram.half_size, b.freq.log2(), b.mag.log2()))
+    ).flatten();
     let time = vals.clone().map(|v| v.0).collect::<Vec<_>>();
     let freq = vals.clone().map(|v| v.1).collect::<Vec<_>>();
     let mag = vals.clone().map(|v| v.2).collect::<Vec<_>>();
@@ -184,15 +184,15 @@ fn make_rect_plot(spectrogram: &spec::Spectrogram) {
     dbg!(&freq.len());
     dbg!(&mag.len());
 
-    let starts = spectrogram.columns.iter().enumerate().map(|(idx, _)| idx*spectrogram.half_size).collect::<Vec<_>>();
+    let bincount = spectrogram.columns.len()-1;
     let freqbins = spectrogram.columns[0].bins.iter().skip(1).map(|b| b.freq.log2()).collect::<Vec<_>>();
-    dbg!(&starts.len());
+    dbg!(&bincount);
     dbg!(&freqbins.len());
 
     python! {
         import matplotlib.pyplot as plt
 
-        plt.hist2d('time, 'freq, ['starts, 'freqbins],weights='mag)
+        plt.hist2d('time, 'freq, ['bincount, 'freqbins],weights='mag)
         plt.show()
     }
 
