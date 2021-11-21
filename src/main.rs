@@ -276,8 +276,8 @@ fn make_rectangles(col: &FftResult, clip: (f32, f32)) -> (Vec<(f32, [[f64;2];4])
     let mut minval = f32::INFINITY;
     let mut maxval = f32::NEG_INFINITY;
     let rects = boxed.tuple_windows().map(|((f, m), (nextf, nextm))| {
-        if m < &minval { minval = *m }
-        if m > &maxval { maxval = *m }
+        if m < minval { minval = m }
+        if m > maxval { maxval = m }
         match nextf.floor() - f.floor() {
             0.0 => vec![
                 [
@@ -321,7 +321,7 @@ fn make_rectangles(col: &FftResult, clip: (f32, f32)) -> (Vec<(f32, [[f64;2];4])
                     [nextf.fract(), f.floor()]
                 ]
             ]
-        }.into_iter().map(move |rect| (*m, rect.map(|r| r.map(f64::from))))
+        }.into_iter().map(move |rect| (m, rect.map(|r| r.map(f64::from))))
     }).flatten().collect();
 
     (rects, minval, maxval)
