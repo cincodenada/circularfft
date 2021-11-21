@@ -85,9 +85,8 @@ fn main() -> Result<(), std::io::Error> {
     //let floatMax = |a:f32, b:f32| max(OrderedFloat(a), OrderedFloat(b)).into();
 
     let spectrogram = spec::Spectrogram::from_samples(
-        &samples, fftsize, overlap, spec::Window::Hann,
-        header.sampling_rate, header.channel_count
-    );
+        &samples, header.sampling_rate, header.channel_count
+    ).calculate_with(fftsize, overlap, spec::Window::Hann);
     let ms_per_col = (((fftsize as f32 * (1.0-overlap))/header.sampling_rate as f32)/speed*1000.0) as u64;
     dbg!(ms_per_col);
 
