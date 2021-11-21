@@ -210,7 +210,26 @@ fn make_rectangles(col: &spec::Column, clip: (f32, f32)) -> Vec<(f32, [[f64;2];4
                         ]
                     )
                 ],
-                (ShardResult::Start(prev_shard, prev), ShardResult::Item(cur_shard, cur)) |
+                (ShardResult::Start(prev_shard, prev), ShardResult::Item(cur_shard, cur)) => vec![
+                    (
+                        cur.mag,
+                        [
+                            [bounds.0, cur_shard as f32],
+                            [bounds.0, (cur_shard + 1) as f32],
+                            [prev.freq_fract, (cur_shard + 1) as f32],
+                            [prev.freq_fract, cur_shard as f32]
+                        ]
+                    ),
+                    (
+                        cur.mag,
+                        [
+                            [prev.freq_fract, cur_shard as f32],
+                            [prev.freq_fract, (cur_shard + 1) as f32],
+                            [cur.freq_fract, (cur_shard + 1) as f32],
+                            [cur.freq_fract, cur_shard as f32]
+                        ]
+                    )
+                ],
                 (ShardResult::Item(prev_shard, prev), ShardResult::Item(cur_shard, cur)) => vec![
                     (
                         cur.mag,
@@ -219,6 +238,17 @@ fn make_rectangles(col: &spec::Column, clip: (f32, f32)) -> Vec<(f32, [[f64;2];4
                             [prev.freq_fract, (cur_shard + 1) as f32],
                             [cur.freq_fract, (cur_shard + 1) as f32],
                             [cur.freq_fract, cur_shard as f32]
+                        ]
+                    )
+                ],
+                (ShardResult::Item(prev_shard, prev), ShardResult::Start(cur_shard, cur)) => vec![
+                    (
+                        cur.mag,
+                        [
+                            [prev.freq_fract, cur_shard as f32],
+                            [prev.freq_fract, (cur_shard + 1) as f32],
+                            [bounds.1, (cur_shard + 1) as f32],
+                            [bounds.1, cur_shard as f32]
                         ]
                     )
                 ],
