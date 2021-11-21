@@ -1,5 +1,3 @@
-use std::cmp::PartialOrd;
-
 enum State {
     Start,
     Passthrough,
@@ -9,55 +7,49 @@ enum State {
 }
 
 pub trait Shardable {
-    fn shard(&self) -> usize;
-    fn from_shard(shard: usize) -> Self;
-    
-    fn same_shard(&self, other: &Self) -> bool {
-        self.shard() == other.shard()
-    }
+    fn shard(&self) -> Some(usize);
+    fn shard_start(shard: usize) -> Self;
+    fn shard_end(shard: usize) -> Self;
 }
 
-pub struct BracketedChunks<I, R>
-  where I: Iterator, R: PartialOrd<I::Item>
+pub struct BracketedChunks<I> where I: Iterator
 {
     state: State,
-    min: R,
-    max: R,
     candidate: Option<I::Item>,
     source: I,
 }
 
-impl<I, R> Iterator for BracketedChunks<I, R>
+impl<I> Iterator for BracketedChunks<I>
 where
     I: Iterator,
-    I::Item: Shardable + Copy,
-    R: PartialOrd<I::Item>
+    I::Item: Shardable + Copy
 {
     type Item = I::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (cur, next, state) = match (&self.state, &self.candidate) {
-            (State::Start, None) => {
-                let min = self.min;
-                (Some(min), self.source.find(|v| min < *v), State::Passthrough)
+        let candidate_shard = c.shard();
+        let (state, cur, next) = match (&self.state, &self.candidate, candidate_shard) {
+            (State::Start, c, None) => {
+                (State::Start, None, None)
+                (Shardable::shard_start(first.shard()), first, State::Passthrough)
             },
-            (State::Start, _) =>
-                panic!("Invalid state, had candidate at start!"),
-            (State::Passthrough, Some(c)) => match self.source.next() {
+            (State::Start, c, Some(shard)) =>
+                (State::Passthrough, Shardable::shard_start(shard), c)
+            (State::Passthrough, Some(c), Some(shard)) => match self.source.next() {
                 Some(next) if next >= self.max =>
-                    (self.candidate, Some(self.max), State::Finish),
-                Some(next) if next.same_shard(&c) =>
-                    (self.candidate, Some(next), State::Passthrough),
+                    (self.candidate, Shardable::shard_end(shard), State::Finish),
+                Some(next) if next.shard() == next.shard() =>
+                    (State::Passthrough, self.candidate, Some(next)),
                 Some(next) =>
-                    (self.candidate, Some(next), State::NewShard),
-                // TODO: This assumes max is always the end of the last shard
+                    (State::NewShard, self.candidate, Some(next)),
+                // TODO: This assumes last is always the end of the last shard
                 // which is probably true for my case but could be more general
-                None => (self.candidate, Some(self.max), State::Finish)
+                None => (State::Finish, self.candidate, Shardable::shard_end(shard))
             },
             (State::Passthrough, None) =>
                 panic!("Invalid state, passthrough without candidate!"),
             (State::NewShard, Some(c)) => 
-                (Some(Self::Item::from_shard(c.shard())), self.candidate, State::Passthrough),
+                (STate::Passthrough, Some(Self::Item::shard_start(c.shard())), self.candidate),
             (State::NewShard, None) =>
                 panic!("Invalid state, new shard without candidate!"),
             (State::Finish, _) => (self.candidate, None, State::Exhausted),
@@ -70,10 +62,10 @@ where
 }
 
 pub trait Bracketed: Iterator {
-    fn bracketed_chunks<T>(self, min: T, max: T) -> BracketedChunks<Self, T>
-        where Self:Sized, T: PartialOrd<Self::Item> {
+    fn bracketed_chunks<T>(self) -> BracketedChunks<Self, T>
+        where Self:Sized
+    {
         BracketedChunks {
-            min, max,
             state: State::Start,
             candidate: None,
             source: self
@@ -100,10 +92,11 @@ mod tests {
             fn shard(&self) -> usize {
                 self/10 as usize
             }
-            fn from_shard(shard: usize) -> usize { shard*10 }
+            fn shard_start(shard: usize) -> usize { shard*10 }
+            fn shard_end(shard: usize) -> usize { (shard+1)*10 }
         }
 
         let bracketed = dbgIter((5..50).step_by(10).bracketed_chunks(10, 40));
-        assert!(itertools::equal([10,15,20,25,30,35,40], bracketed));
+        assert!(itertools::equal([10,15,20,20,25,30,30,35,40], bracketed));
     }
 }
