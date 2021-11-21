@@ -79,7 +79,7 @@ impl Spectrogram {
 
         let mut min_mag = f32::INFINITY;
         let mut max_mag = f32::NEG_INFINITY;
-        let step = (fft_size as f32 * overlap) as usize;
+        let step = (fft_size as f32 * (1.0-overlap)) as usize;
 
         let samples = samples.chunks(channels as usize)
             .map(|v| v.into_iter().sum::<f32>()/v.len() as f32)
