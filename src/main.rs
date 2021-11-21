@@ -129,7 +129,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let makeColorer = |min, max| {
         let halfrange = (max-min)/2.0;
-        move |val| match (val-min)/halfrange {
+        move |val: f32| match (val-min)/halfrange {
             v @ 0.0..=1.0 => [0.0, v/2.0, 0.0, 1.0],
             v => [v-1.0, v/2.0, 0.0, 1.0],
         }
@@ -150,6 +150,7 @@ fn main() -> Result<(), std::io::Error> {
     while let Some(e) = window.next() {
         window.draw_2d(&e, |c, g, _| {
             clear([0.5, 0.5, 0.5, 1.0], g);
+            /*
             let (rects, minval, maxval) = make_rectangles(slice.next().unwrap(), freq_range);
             let dims = c.viewport.unwrap().draw_size.map(f64::from);
             rects.into_iter().map(|(val, points)| polygon(
@@ -157,6 +158,7 @@ fn main() -> Result<(), std::io::Error> {
                 &points.map(|p| [p[0]*dims[0], (p[1]-mapped_range.0)/mapped_span*dims[1]]),
                 c.transform, g
             )).last();
+            */
         });
     }
 
@@ -241,6 +243,7 @@ fn dbgIter<I, T>(it: I) -> impl Iterator<Item=T> where I: Iterator<Item=T>, T: s
     collected.into_iter()
 }
 
+/*
 fn make_rectangles(col: &FftResult, clip: (f32, f32)) -> (Vec<(f32, [[f64;2];4])>, f32, f32) {
     let bins = col.bins.iter().skip(1)
         .filter(|bin| bin.freq >= clip.0 && bin.freq < clip.1);
@@ -302,3 +305,4 @@ fn make_rectangles(col: &FftResult, clip: (f32, f32)) -> (Vec<(f32, [[f64;2];4])
 
     (rects, minval, maxval)
 }
+*/

@@ -42,6 +42,8 @@ where
             (State::Start, _) =>
                 panic!("Invalid state, had candidate at start!"),
             (State::Passthrough, Some(c)) => match self.source.next() {
+                Some(next) if next >= self.max =>
+                    (self.candidate, Some(self.max), State::Finish),
                 Some(next) if next.same_shard(&c) =>
                     (self.candidate, Some(next), State::Passthrough),
                 Some(next) =>
@@ -77,3 +79,28 @@ trait Bracketed: Iterator {
 }
 
 impl<I: Iterator> Bracketed for I {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use itertools;
+
+    fn dbgIter<I, T>(it: I) -> impl Iterator<Item=T> where I: Iterator<Item=T>, T: std::fmt::Debug {
+        let collected = it.collect::<Vec<_>>();
+        dbg!(&collected);
+        collected.into_iter()
+    }
+
+    #[test]
+    fn partitions_things() {
+        impl Shardable for usize {
+            fn shard(&self) -> usize {
+                self/10 as usize
+            }
+            fn from_shard(shard: usize) -> usize { shard*10 }
+        }
+
+        let bracketed = dbgIter((5..50).step_by(10).bracketed_chunks(10, 40));
+        assert!(itertools::equal([10,15,20,25,30,35,40], bracketed));
+    }
+}
