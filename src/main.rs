@@ -10,6 +10,7 @@ use spectrogram as spec;
 use piston_window::*;
 use tuple::*;
 
+use std::env;
 use std::time::{Duration, SystemTime};
 use std::fs::File;
 use std::path::Path;
@@ -59,7 +60,13 @@ impl Colorer<spec::Freq> {
 }
 
 fn main() -> Result<(), std::io::Error> {
-    let fftsize = 2_usize.pow(13);
+    let args = env::args().collect::<Vec<_>>();
+    let fftpow = args[1].parse::<u32>().unwrap();
+    let overlap = args[2].parse::<f32>().unwrap();
+    let speed = args[3].parse::<f32>().unwrap();
+
+    let fftsize = 2_usize.pow(fftpow);
+    println!("Using fft size of {}, overlap {}", fftsize, overlap);
 
     let mut inp_file = File::open(Path::new("input.wav"))?;
     let (header, data) = wav::read(&mut inp_file)?;
@@ -77,16 +84,16 @@ fn main() -> Result<(), std::io::Error> {
 
     //let floatMax = |a:f32, b:f32| max(OrderedFloat(a), OrderedFloat(b)).into();
 
-    let overlap = 0.8;
     let spectrogram = spec::Spectrogram::from_samples(
         &samples, fftsize, overlap, spec::Window::Hann,
         header.sampling_rate, header.channel_count
     );
-    let ns_per_col = ((fftsize as f32 * overlap)/header.sampling_rate as f32) as u32;
+    let ms_per_col = (((fftsize as f32 * (1.0-overlap))/header.sampling_rate as f32)/speed*1000.0) as u64;
+    dbg!(ms_per_col);
 
     let colorer = Colorer::new(spectrogram.min_mag, spectrogram.max_mag);
 
-    make_window(&spectrogram, colorer, Duration::new(0, ns_per_col));
+    make_window(&spectrogram, colorer, Duration::from_millis(ms_per_col.into()));
     //make_circle_plot(&spectrogram);
     //make_rect_plot(&spectrogram);
 
