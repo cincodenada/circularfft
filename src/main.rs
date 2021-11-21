@@ -77,7 +77,7 @@ fn main() -> Result<(), std::io::Error> {
     //let floatMax = |a:f32, b:f32| max(OrderedFloat(a), OrderedFloat(b)).into();
 
     let spectrogram = spec::Spectrogram::from_samples(
-        &samples, fftsize,
+        &samples, fftsize, 0.5,
         header.sampling_rate, header.channel_count
     );
 

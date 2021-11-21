@@ -40,25 +40,26 @@ pub struct Spectrogram {
     pub min_mag: Mag,
 }
 impl Spectrogram {
-    pub fn from_samples(samples: &Vec<f32>, fft_size: usize, sample_rate: u32, channels: u16) -> Spectrogram {
+    pub fn from_samples(samples: &Vec<f32>, fft_size: usize, overlap: f32, sample_rate: u32, channels: u16) -> Spectrogram {
         let mut planner = FftPlanner::new();
         let fft = planner.plan_fft_forward(fft_size);
 
         let mut min_mag = f32::INFINITY;
         let mut max_mag = f32::NEG_INFINITY;
-        let columns = samples.chunks(channels as usize)
+        let step = (fft_size as f32 * overlap) as usize;
+
+        let samples = samples.chunks(channels as usize)
             .map(|v| v.into_iter().sum::<f32>()/v.len() as f32)
-            .map(Point::from)
-            .chunks(fft_size).into_iter()
-            .filter_map(|samples| {
-                let mut buffer = samples.collect::<Vec<_>>();
-                if(buffer.len() < fft_size) { return None; }
-                fft.process(&mut buffer);
-                let col = Column::from_bins(sample_rate, buffer);
-                if col.min_mag < min_mag { min_mag = col.min_mag }
-                if col.max_mag > max_mag { max_mag = col.max_mag }
-                Some(col)
-            }).collect();
+            .map(Point::from).collect::<Vec<_>>();
+
+        let columns = (0..samples.len()-fft_size).step_by(step).map(|start| {
+            let mut buffer = samples[start..start + fft_size].to_vec();
+            fft.process(&mut buffer);
+            let col = Column::from_bins(sample_rate, buffer);
+            if col.min_mag < min_mag { min_mag = col.min_mag }
+            if col.max_mag > max_mag { max_mag = col.max_mag }
+            col
+        }).collect();
 
         Spectrogram {
             sample_rate,
