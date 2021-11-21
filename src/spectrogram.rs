@@ -5,6 +5,39 @@ pub type Freq = f32;
 pub type Mag = f32;
 pub type Point = Complex<Mag>;
 
+pub enum Window {
+  Square,
+  Hann,
+  Hamming,
+  Blackman
+}
+impl Window {
+    fn apply(&self, samples: Vec<f32>) -> Vec<f32> {
+        let N = samples.len() as f32;
+        samples.into_iter().enumerate().map(
+            |(n, v)| self.getVal(N, n as f32, v)
+        ).collect()
+    }
+
+    fn getVal(&self, N: f32, n: f32, v: f32) -> f32 {
+        let CosineSum = |a0: f32, a1: f32, a2: f32| {
+            move |N, n, v| {
+                let term: f32 = 2.0*std::f32::consts::PI*n/N;
+                a0 - a1*term.cos() + a2*(2.0*term).cos()
+            }
+        };
+        let SimpleCosine = move |a0: f32| CosineSum(a0, 1.0-a0, 0.0);
+        let SquareWin = |N, n, v| v;
+
+        match(self) {
+            Square => SquareWin(N, n, v),
+            Hann => SimpleCosine(0.5)(N, n, v),
+            Hamming => SimpleCosine(25.0/46.0)(N, n, v),
+            Blackman => CosineSum(0.42, 0.5, 0.08)(N, n, v)
+        }
+    }
+}
+
 pub struct Bin {
     pub val: Point,
     pub freq: Freq,
@@ -40,7 +73,7 @@ pub struct Spectrogram {
     pub min_mag: Mag,
 }
 impl Spectrogram {
-    pub fn from_samples(samples: &Vec<f32>, fft_size: usize, overlap: f32, sample_rate: u32, channels: u16) -> Spectrogram {
+    pub fn from_samples(samples: &Vec<f32>, fft_size: usize, overlap: f32, windowFunc: Window, sample_rate: u32, channels: u16) -> Spectrogram {
         let mut planner = FftPlanner::new();
         let fft = planner.plan_fft_forward(fft_size);
 
