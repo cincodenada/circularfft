@@ -140,6 +140,7 @@ fn main() -> Result<(), std::io::Error> {
         if col.max_mag > absmax { absmax = col.max_mag }
         col
     }).collect();
+    //dbg!(&mag);
     let time: Vec<Vec<usize>> = starts.iter().map(|start| vec![*start+fftsize/4;fftsize/2]).collect();
 
     let freqbins: Vec<f32> = (1..fftsize/2).map(|v| (v as f32).log2()).collect::<Vec<_>>();
@@ -154,9 +155,9 @@ fn main() -> Result<(), std::io::Error> {
     //let flatmag = mag.into_iter().flatten().collect::<Vec<_>>();
     //let flattime = time.into_iter().flatten().collect::<Vec<_>>();
 
-    let makeColorer = |min, max| {
-        let halfrange = (max-min)/2.0;
-        move |val: f32| match (val-min)/halfrange {
+    let makeColorer = |min: spec::Freq, max: spec::Freq| {
+        let halfrange = (max.log2()-min.log2())/2.0;
+        move |val: f32| match (val.log2()-min.log2())/halfrange {
             v @ 0.0..=1.0 => [0.0, v/2.0, 0.0, 1.0],
             v => [v-1.0, v/2.0, 0.0, 1.0],
         }
@@ -177,15 +178,14 @@ fn main() -> Result<(), std::io::Error> {
     while let Some(e) = window.next() {
         window.draw_2d(&e, |c, g, _| {
             clear([0.5, 0.5, 0.5, 1.0], g);
-            /*
-            let (rects, minval, maxval) = make_rectangles(slice.next().unwrap(), freq_range);
+            let col = slice.next().unwrap();
+            let rects = make_rectangles(col, freq_range);
             let dims = c.viewport.unwrap().draw_size.map(f64::from);
             rects.into_iter().map(|(val, points)| polygon(
                 colorer(val),
                 &points.map(|p| [p[0]*dims[0], (p[1]-mapped_range.0)/mapped_span*dims[1]]),
                 c.transform, g
             )).last();
-            */
         });
     }
 
