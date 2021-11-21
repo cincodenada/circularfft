@@ -36,6 +36,27 @@ type ScreenPoint = (f64, f64);
 type FreqRange = (f32, f32);
 type OctRange = (usize, usize);
 
+struct Colorer<T> {
+    min: T,
+    max: T,
+    halfrange: T
+}
+impl Colorer<spec::Freq> {
+    fn new(min: spec::Freq, max: spec::Freq) -> Self {
+        let min = min.log2();
+        let max = max.log2();
+        let halfrange = (max - min)/2.0;
+        Colorer { min, max, halfrange }
+    }
+
+    fn map(&self, val: spec::Freq) -> [f32;4] {
+        match (val.log2() - self.min)/self.halfrange {
+            v @ 0.0..=1.0 => [0.0, v/2.0, 0.0, 1.0],
+            v => [v-1.0, v/2.0, 0.0, 1.0],
+        }
+    }
+}
+
 fn main() -> Result<(), std::io::Error> {
     let fftsize = 2_usize.pow(14);
 
@@ -59,34 +80,21 @@ fn main() -> Result<(), std::io::Error> {
         &samples, fftsize,
         header.sampling_rate, header.channel_count
     );
-    //dbg!(&mag);
 
-    let freqbins: Vec<f32> = (1..fftsize/2).map(|v| (v as f32).log2()).collect::<Vec<_>>();
+    let colorer = Colorer::new(spectrogram.min_mag, spectrogram.max_mag);
 
-    let r: Vec<f32> = freqbins.iter().map(|v| v.floor()).collect();
-    let theta = r.iter().zip(freqbins.iter()).map(|(&r, &v)| v - r).collect::<Vec<_>>();
+    make_window(&spectrogram, colorer);
+    //make_plot(&spectrogram);
 
-    let xbins = r.to_vec().into_iter().map(OrderedFloat).max().unwrap();
-    let xbinsf: f32 = xbins.into();
-    let onefreq = freqbins.iter().filter(|f| OrderedFloat(**f) >= xbins).map(|f| f - xbinsf).collect::<Vec<_>>();
+    Ok(())
+}
 
-    let makeColorer = |min: spec::Freq, max: spec::Freq| {
-        let halfrange = (max.log2()-min.log2())/2.0;
-        move |val: f32| match (val.log2()-min.log2())/halfrange {
-            v @ 0.0..=1.0 => [0.0, v/2.0, 0.0, 1.0],
-            v => [v-1.0, v/2.0, 0.0, 1.0],
-        }
-    };
-
-    //let (x, y, values) = make_color_mesh(&mag[100], &freqbins, &onefreq, xbinsf);
-
+fn make_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>) {
     let freq_range = (16.35, 8372.02);
     let mapped_range = freq_range.map(|v| (v as f64).log2());
     let mapped_span = mapped_range.1 - mapped_range.0;
 
     let mut slice = spectrogram.columns.iter().cycle();
-    let colorer = makeColorer(spectrogram.min_mag, spectrogram.max_mag);
-
     let mut window: PistonWindow =
         WindowSettings::new("Hello World!", [512; 2])
             .build().unwrap();
@@ -97,7 +105,7 @@ fn main() -> Result<(), std::io::Error> {
             let rects = make_wedges(col, freq_range);
             let dims = c.viewport.unwrap().draw_size.map(f64::from);
             rects.into_iter().map(|(val, points)| polygon(
-                colorer(val),
+                colorer.map(val),
                 &points.map(|p| [
                     (dims[0]/2.0)*(p[0]/mapped_span+1.0),
                     (dims[1]/2.0)*(p[1]/mapped_span+1.0),
@@ -106,6 +114,17 @@ fn main() -> Result<(), std::io::Error> {
             )).last();
         });
     }
+}
+
+fn make_plot(spectrogram: &spec::Spectrogram) {
+    let freqbins: Vec<f32> = (1..spectrogram.half_size).map(|v| (v as f32).log2()).collect::<Vec<_>>();
+    
+    let r: Vec<f32> = freqbins.iter().map(|v| v.floor()).collect();
+    //let theta = r.iter().zip(freqbins.iter()).map(|(&r, &v)| v - r).collect::<Vec<_>>();
+    let xbins = r.to_vec().into_iter().map(OrderedFloat).max().unwrap();
+    let xbinsf: f32 = xbins.into();
+
+    let onefreq = freqbins.iter().filter(|f| OrderedFloat(**f) >= xbins).map(|f| f - xbinsf).collect::<Vec<_>>();
 
     //dbg!(&theta);
     //dbg!(&r);
@@ -116,35 +135,37 @@ fn main() -> Result<(), std::io::Error> {
     //dbg!(&dupcol);
     //dbg!(&wholes);
 
-    //python! {
-    //    import matplotlib.pyplot as plt
-    //    import numpy as np
-    //    import math
+    let mag = spectrogram.columns[100].bins.iter().map(|b| b.mag.log2()).collect::<Vec<_>>();
+    let (x, y, values) = make_color_mesh(&mag, &freqbins, &onefreq, xbinsf);
 
-    //    x = [row + [math.pi*2] for row in 'x]
-    //    x = x + [x[-1]]
-    //    y = [col + [col[-1]] for col in 'y] + [['y[-1][0]+1] * (len('y[0])+1)]
-    //    def dims(x):
-    //        print(len(x))
-    //        print([len(r) for r in x])
-    //    dims(x)
-    //    dims(y)
-    //    dims('values)
+    python! {
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import math
 
-    //    fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
-    //    ax.set_rmax(3)
-    //    ax.set_rticks([0.5, 1, 1.5, 2])  # Less radial ticks
-    //    ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
-    //    ax.set_xticks([(s+0.5)/12*math.pi*2 for s in range(0,12)])
-    //    ax.set_xticklabels(['|']*12)
-    //    ax.grid(True)
+        x = [row + [math.pi*2] for row in 'x]
+        x = x + [x[-1]]
+        y = [col + [col[-1]] for col in 'y] + [['y[-1][0]+1] * (len('y[0])+1)]
+        def dims(x):
+            print(len(x))
+            print([len(r) for r in x])
+        dims(x)
+        dims(y)
+        dims('values)
 
-    //    plt.pcolormesh(x, y, 'values)
-    //    plt.show()
-    //}
+        fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
+        ax.set_rmax(3)
+        ax.set_rticks([0.5, 1, 1.5, 2])  # Less radial ticks
+        ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
+        ax.set_xticks([(s+0.5)/12*math.pi*2 for s in range(0,12)])
+        ax.set_xticklabels(['|']*12)
+        ax.grid(True)
 
-    Ok(())
+        plt.pcolormesh(x, y, 'values)
+        plt.show()
+    }
 }
+
 
 fn make_color_mesh(fftcol: &[f32], freqbins: &[f32], onefreq: &[f32], repcount: f32) -> (Vec<Vec<f32>>, Vec<Vec<f32>>, Vec<Vec<f32>>) {
     let mut col = fftcol.iter();
