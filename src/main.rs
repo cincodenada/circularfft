@@ -83,8 +83,9 @@ fn main() -> Result<(), std::io::Error> {
 
     let colorer = Colorer::new(spectrogram.min_mag, spectrogram.max_mag);
 
-    make_window(&spectrogram, colorer);
-    //make_plot(&spectrogram);
+    //make_window(&spectrogram, colorer);
+    //make_circle_plot(&spectrogram);
+    make_rect_plot(&spectrogram);
 
     Ok(())
 }
@@ -116,7 +117,7 @@ fn make_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>) {
     }
 }
 
-fn make_plot(spectrogram: &spec::Spectrogram) {
+fn make_circle_plot(spectrogram: &spec::Spectrogram) {
     let freqbins: Vec<f32> = (1..spectrogram.half_size).map(|v| (v as f32).log2()).collect::<Vec<_>>();
     
     let r: Vec<f32> = freqbins.iter().map(|v| v.floor()).collect();
@@ -164,6 +165,37 @@ fn make_plot(spectrogram: &spec::Spectrogram) {
         plt.pcolormesh(x, y, 'values)
         plt.show()
     }
+}
+
+fn make_rect_plot(spectrogram: &spec::Spectrogram) {
+    //let starts: Vec<usize> = (0..width).map(|v| v*fftsize/2).collect();
+    //let time: Vec<usize> = starts.iter().map(|start| vec![*start+fftsize/4;fftsize/2]).flatten().collect();
+    //let freqbins: Vec<f32> = (0..fftsize/2).map(|v| floatMax((v as f32).log10(),0.0)).collect::<Vec<_>>();
+    //let freq: Vec<f32> = starts.iter().map(|_| freqbins.to_vec()).flatten().collect();
+
+    let mut vals = spectrogram.columns.iter().enumerate()
+        .map(|(idx, c)| c.bins.iter().skip(1)
+            .map(move |b| (idx, b.freq, b.mag.log2()))
+        ).flatten();
+    let time = vals.clone().map(|v| v.0).collect::<Vec<_>>();
+    let freq = vals.clone().map(|v| v.1).collect::<Vec<_>>();
+    let mag = vals.clone().map(|v| v.2).collect::<Vec<_>>();
+    dbg!(&time.len());
+    dbg!(&freq.len());
+    dbg!(&mag.len());
+
+    let starts = spectrogram.columns.iter().enumerate().map(|(idx, _)| idx*spectrogram.half_size).collect::<Vec<_>>();
+    let freqbins = spectrogram.columns[0].bins.iter().skip(1).map(|b| b.freq.log2()).collect::<Vec<_>>();
+    dbg!(&starts.len());
+    dbg!(&freqbins.len());
+
+    python! {
+        import matplotlib.pyplot as plt
+
+        plt.hist2d('time, 'freq, ['starts, 'freqbins],weights='mag)
+        plt.show()
+    }
+
 }
 
 
