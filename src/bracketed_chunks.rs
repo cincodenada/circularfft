@@ -41,12 +41,14 @@ where
         let (state, cur, next) = match (&self.state, candidate) {
             (State::Start, None) => {
                 let sharder = &self.sharder;
-                let first = self.source.find(|v| sharder.shard(&v).is_some()).unwrap();
-                (
-                  State::Passthrough,
-                  Some(ShardResult::Start(self.sharder.shard(&first).unwrap(), first)),
-                  self.source.next()
-                )
+                match self.source.find(|v| sharder.shard(&v).is_some()) {
+                  Some(first) => (
+                    State::Passthrough,
+                    Some(ShardResult::Start(self.sharder.shard(&first).unwrap(), first)),
+                    self.source.next()
+                  ),
+                  None => (State::Exhausted, None, None)
+                }
             },
             (State::Start, Some(_)) =>
                 panic!("Invalid state, Start with candidate!"),
@@ -68,10 +70,8 @@ where
                 (None, _) =>
                     panic!("Invalid state, passthrough with out-of-range value!")
             },
-            (State::Passthrough, Some(_)) =>
-              panic!("Invalid state, passthrough with non-item result!"),
             (State::Passthrough, None) =>
-                panic!("Invalid state, passthrough without candidate!"),
+                (State::Exhausted, None, None),
 
             (State::Exhausted, _) =>
                 (State::Exhausted, None, None)
