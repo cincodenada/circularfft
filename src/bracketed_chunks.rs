@@ -24,13 +24,14 @@ pub struct BracketedChunks<I, S>
 impl<I, S> Iterator for BracketedChunks<I, S>
 where
     I: Iterator,
-    I::Item: Copy,
     S: Sharder<I::Item>
 {
     type Item = I::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (state, cur, next) = match (&self.state, &self.candidate) {
+        let mut candidate = None;
+        std::mem::swap(&mut candidate, &mut self.candidate);
+        let (state, cur, next) = match (&self.state, candidate) {
             (State::Start, None) => {
                 let sharder = &self.sharder;
                 let first = self.source.find(|v| sharder.shard(&v).is_some()).unwrap();
@@ -42,15 +43,15 @@ where
                 // Cur is valid, and we have a next
                 (Some(shard), Some(next)) => match self.sharder.shard(&next) {
                     Some(next_shard) if shard == next_shard =>
-                        (State::Passthrough, self.candidate, Some(next)),
+                        (State::Passthrough, Some(c), Some(next)),
                     Some(_) =>
-                        (State::NewShard, self.candidate, Some(next)),
+                        (State::NewShard, Some(c), Some(next)),
                     None => 
-                        (State::Finish, self.candidate, Some(self.sharder.shard_end(shard)))
+                        (State::Finish, Some(c), Some(self.sharder.shard_end(shard)))
                 },
                 // Cur is valid, but no next
                 (Some(shard), None) =>
-                    (State::Finish, self.candidate, Some(self.sharder.shard_end(shard))),
+                    (State::Finish, Some(c), Some(self.sharder.shard_end(shard))),
                 // Cur is invalid
                 (None, _) =>
                     panic!("Invalid state, passthrough with out-of-range value!")
@@ -58,11 +59,11 @@ where
             (State::Passthrough, None) =>
                 panic!("Invalid state, passthrough without candidate!"),
             (State::NewShard, Some(c)) => 
-                (State::Passthrough, Some(self.sharder.shard_start(self.sharder.shard(&c).unwrap())), self.candidate),
+                (State::Passthrough, Some(self.sharder.shard_start(self.sharder.shard(&c).unwrap())), Some(c)),
             (State::NewShard, None) =>
                 panic!("Invalid state, new shard without candidate!"),
-            (State::Finish, _) => 
-                (State::Exhausted, self.candidate, None),
+            (State::Finish, c) =>
+                (State::Exhausted, c, None),
             (State::Exhausted, _) =>
                 (State::Exhausted, None, None)
         };
