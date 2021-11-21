@@ -94,7 +94,7 @@ fn main() -> Result<(), std::io::Error> {
         window.draw_2d(&e, |c, g, _| {
             clear([0.5, 0.5, 0.5, 1.0], g);
             let col = slice.next().unwrap();
-            let rects = make_rectangles(col, freq_range);
+            let rects = make_wedges(col, freq_range);
             let dims = c.viewport.unwrap().draw_size.map(f64::from);
             rects.into_iter().map(|(val, points)| polygon(
                 colorer(val),
@@ -237,8 +237,22 @@ fn make_bins<'a>(col: &'a spec::Column, clip: FreqRange) -> impl Iterator<Item=(
         }).flatten()
 }
 
-fn make_rectangles(col: &spec::Column, clip: FreqRange) -> Vec<(f32, [[f64;2];4])> {
-    make_bins(col, clip).into_iter()
+fn make_wedges<'a>(col: &'a spec::Column, clip: FreqRange) -> impl Iterator<Item=(f32, [[f64;2];4])> + 'a {
+    let polar = |thetaish, r| {
+        let theta: f64 = thetaish as f64*2.0*std::f64::consts::PI;
+        let r = r as f64;
+        [r * theta.cos(), r * theta.sin()]
+    };
+    make_bins(col, clip)
+        .map(move |(m, x, y)| (m, [
+            polar(x.0, y.0),
+            polar(x.0, y.1),
+            polar(x.1, y.1),
+            polar(x.1, y.0)
+        ]))
+}
+fn make_rectangles<'a>(col: &'a spec::Column, clip: FreqRange) -> impl Iterator<Item=(f32, [[f64;2];4])> + 'a {
+    make_bins(col, clip)
         .map(|(m, x, y)| {
             let x = x.map(|v| v as f64);
             let y = y.map(|v| v as f64);
@@ -248,5 +262,5 @@ fn make_rectangles(col: &spec::Column, clip: FreqRange) -> Vec<(f32, [[f64;2];4]
                 [x.1, y.1],
                 [x.1, y.0]
             ])
-        }).collect()
+        })
 }
