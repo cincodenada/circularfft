@@ -2,8 +2,10 @@ extern crate piston_window;
 extern crate tuple;
 
 mod bracketed_chunks;
+mod spectrogram;
 
 use bracketed_chunks::*;
+use spectrogram as spec;
 
 use piston_window::*;
 use tuple::*;
@@ -18,83 +20,16 @@ use ordered_float::OrderedFloat;
 use itertools::Itertools;
 
 struct OctaveSharder {
-    min: FftFreq,
-    max: FftFreq
+    min: spec::Freq,
+    max: spec::Freq
 }
-impl Sharder<&FftBin> for OctaveSharder {
-    fn shard(&self, freq: &&FftBin) -> Option<usize> {
+impl Sharder<&spec::Bin> for OctaveSharder {
+    fn shard(&self, freq: &&spec::Bin) -> Option<usize> {
         match *freq {
             v if v.freq < self.min => None,
             v if v.freq > self.max => None,
             v => Some(v.freq_log.floor() as usize)
         }
-    }
-    /*
-    fn shard_start(&self, shard: usize) -> FftBin {
-        self.minInstance = Some(FftBin {
-            freq: 2_usize.pow(shard as u32) as f32,
-            mag: 0.0,
-            val: 0.0.into()
-        });
-        &self.minInstance.unwrap()
-    }
-    fn shard_end(&self, shard: usize) -> FftBin {
-        self.maxInstance = Some(FftBin {
-            freq: 2_usize.pow(shard as u32+1) as f32,
-            mag: 0.0,
-            val: 0.0.into()
-        });
-        &self.maxInstance.unwrap()
-    }
-    */
-}
-
-type FftFreq = f32;
-type FftMag = f32;
-type FftPoint = Complex<FftMag>;
-
-struct FftBin {
-    val: FftPoint,
-    freq: FftFreq,
-    mag: FftMag,
-    freq_log: FftFreq
-}
-impl FftBin {
-    fn from_sample(idx: usize, val: FftPoint, max_freq: FftFreq) -> FftBin {
-        let freq = idx as FftFreq/max_freq;
-        FftBin {
-            freq, val,
-            freq_log: freq.log2(),
-            mag: val.norm()
-        }
-    }
-}
-
-struct FftResult {
-    sample_rate: u32,
-    fft_size: usize,
-    half_size: usize,
-    bins: Vec<FftBin>,
-    max_freq: FftFreq,
-    max_mag: f32,
-    min_mag: f32
-}
-impl FftResult {
-    fn from_bins(sample_rate: u32, bins: Vec<FftPoint>) -> FftResult {
-        let mut min_mag = f32::INFINITY;
-        let mut max_mag = f32::NEG_INFINITY;
-        let fft_size = bins.len();
-        let half_size = fft_size/2;
-        let max_freq = sample_rate as FftFreq/2.0;
-        let bins = bins.into_iter().take(half_size).enumerate()
-            .map(|(idx, v)| {
-                let bin = FftBin::from_sample(idx, v, max_freq);
-                if bin.mag < min_mag { min_mag = bin.mag }
-                if bin.mag > max_mag { max_mag = bin.mag }
-                bin
-            }).collect();
-
-        FftResult { sample_rate, fft_size, half_size, max_freq, bins, min_mag, max_mag }
     }
 }
 
@@ -107,7 +42,7 @@ fn main() -> Result<(), std::io::Error> {
     let mut inp_file = File::open(Path::new("input.wav"))?;
     let (header, data) = wav::read(&mut inp_file)?;
 
-    let complex : Vec<FftPoint> = match data {
+    let complex : Vec<spec::Point> = match data {
         //BitDepth::Sixteen(vec) => vec.into_iter().collect(),
         //BitDepth::TwentyFour(vec) => vec.into_iter().collect(),
         //BitDepth::ThirtyTwoFloat(vec) => vec.into_iter().collect(),
@@ -115,7 +50,7 @@ fn main() -> Result<(), std::io::Error> {
         BitDepth::ThirtyTwoFloat(vec) => vec
             .chunks(header.channel_count as usize)
             .map(|v| v.into_iter().sum::<f32>()/v.len() as f32)
-            .map(FftPoint::from)
+            .map(spec::Point::from)
             .collect(),
         _ => panic!("Ack!"),
         BitDepth::Empty => panic!("Ack!")
@@ -132,10 +67,10 @@ fn main() -> Result<(), std::io::Error> {
     let mut absmin = f32::INFINITY;
     let mut absmax = f32::NEG_INFINITY;
     let starts: Vec<usize> = (0..width).map(|v| v*fftsize/2).collect();
-    let mag: Vec<FftResult> = starts.iter().map(|start| {
+    let mag: Vec<spec::Column> = starts.iter().map(|start| {
         let mut buffer = complex[*start..start+fftsize].to_vec();
         fft.process(&mut buffer);
-        let col = FftResult::from_bins(sample_rate, buffer);
+        let col = spec::Column::from_bins(sample_rate, buffer);
         if col.min_mag < absmin { absmin = col.min_mag }
         if col.max_mag > absmax { absmax = col.max_mag }
         col
@@ -270,7 +205,7 @@ fn dbgIter<I, T>(it: I) -> impl Iterator<Item=T> where I: Iterator<Item=T>, T: s
     collected.into_iter()
 }
 
-fn make_rectangles(col: &FftResult, clip: (f32, f32)) -> Vec<(f32, [[f64;2];4])> {
+fn make_rectangles(col: &spec::Column, clip: (f32, f32)) -> Vec<(f32, [[f64;2];4])> {
     let sharder = OctaveSharder { min: clip.0, max: clip.1 };
     let bounds = (0.0, 1.0);
     col.bins.iter().skip(1)
