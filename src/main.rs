@@ -10,6 +10,7 @@ use spectrogram as spec;
 use piston_window::*;
 use tuple::*;
 
+use std::time::{Duration, SystemTime};
 use std::fs::File;
 use std::path::Path;
 use wav::BitDepth;
@@ -58,7 +59,7 @@ impl Colorer<spec::Freq> {
 }
 
 fn main() -> Result<(), std::io::Error> {
-    let fftsize = 2_usize.pow(14);
+    let fftsize = 2_usize.pow(13);
 
     let mut inp_file = File::open(Path::new("input.wav"))?;
     let (header, data) = wav::read(&mut inp_file)?;
@@ -76,33 +77,43 @@ fn main() -> Result<(), std::io::Error> {
 
     //let floatMax = |a:f32, b:f32| max(OrderedFloat(a), OrderedFloat(b)).into();
 
+    let overlap = 0.8;
     let spectrogram = spec::Spectrogram::from_samples(
-        &samples, fftsize, 0.5, spec::Window::Hann,
+        &samples, fftsize, overlap, spec::Window::Hann,
         header.sampling_rate, header.channel_count
     );
+    let ns_per_col = ((fftsize as f32 * overlap)/header.sampling_rate as f32) as u32;
 
     let colorer = Colorer::new(spectrogram.min_mag, spectrogram.max_mag);
 
-    //make_window(&spectrogram, colorer);
+    make_window(&spectrogram, colorer, Duration::new(0, ns_per_col));
     //make_circle_plot(&spectrogram);
-    make_rect_plot(&spectrogram);
+    //make_rect_plot(&spectrogram);
 
     Ok(())
 }
 
-fn make_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>) {
+fn make_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>, spf: std::time::Duration) {
     let freq_range = (16.35, 8372.02);
     let mapped_range = freq_range.map(|v| (v as f64).log2());
     let mapped_span = mapped_range.1 - mapped_range.0;
 
     let mut slice = spectrogram.columns.iter().cycle();
+    let mut col = slice.next().unwrap();
     let mut window: PistonWindow =
         WindowSettings::new("Hello World!", [512; 2])
             .build().unwrap();
+    let mut time = SystemTime::now();
     while let Some(e) = window.next() {
         window.draw_2d(&e, |c, g, _| {
+            if let Ok(v) = time.elapsed() {
+                if(v > spf) {
+                    col = slice.next().unwrap();
+                    time = SystemTime::now();
+                }
+            }
+
             clear([0.5, 0.5, 0.5, 1.0], g);
-            let col = slice.next().unwrap();
             let rects = make_wedges(col, freq_range);
             let dims = c.viewport.unwrap().draw_size.map(f64::from);
             rects.into_iter().map(|(val, points)| polygon(
