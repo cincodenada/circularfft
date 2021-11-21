@@ -10,7 +10,6 @@ use spectrogram as spec;
 use piston_window::*;
 use tuple::*;
 
-use rustfft::{FftPlanner, num_complex::Complex};
 use std::fs::File;
 use std::path::Path;
 use wav::BitDepth;
@@ -36,47 +35,27 @@ impl Sharder<&spec::Bin> for OctaveSharder {
 fn main() -> Result<(), std::io::Error> {
     let fftsize = 2_usize.pow(14);
 
-    let mut planner = FftPlanner::new();
-    let fft = planner.plan_fft_forward(fftsize);
-
     let mut inp_file = File::open(Path::new("input.wav"))?;
     let (header, data) = wav::read(&mut inp_file)?;
 
-    let complex : Vec<spec::Point> = match data {
+    let samples : Vec<_> = match data {
         //BitDepth::Sixteen(vec) => vec.into_iter().collect(),
         //BitDepth::TwentyFour(vec) => vec.into_iter().collect(),
         //BitDepth::ThirtyTwoFloat(vec) => vec.into_iter().collect(),
         // TODO: We probably shouldn't need to collect() here
-        BitDepth::ThirtyTwoFloat(vec) => vec
-            .chunks(header.channel_count as usize)
-            .map(|v| v.into_iter().sum::<f32>()/v.len() as f32)
-            .map(spec::Point::from)
-            .collect(),
+        BitDepth::ThirtyTwoFloat(vec) => vec,
         _ => panic!("Ack!"),
         BitDepth::Empty => panic!("Ack!")
     };
-    dbg!(complex.len());
-    let sample_rate = header.sampling_rate;
-    let max_freq = sample_rate/2;
     dbg!(&header);
 
     //let floatMax = |a:f32, b:f32| max(OrderedFloat(a), OrderedFloat(b)).into();
 
-    let width=complex.len()/fftsize*2-1;
-
-    let mut absmin = f32::INFINITY;
-    let mut absmax = f32::NEG_INFINITY;
-    let starts: Vec<usize> = (0..width).map(|v| v*fftsize/2).collect();
-    let mag: Vec<spec::Column> = starts.iter().map(|start| {
-        let mut buffer = complex[*start..start+fftsize].to_vec();
-        fft.process(&mut buffer);
-        let col = spec::Column::from_bins(sample_rate, buffer);
-        if col.min_mag < absmin { absmin = col.min_mag }
-        if col.max_mag > absmax { absmax = col.max_mag }
-        col
-    }).collect();
+    let spectrogram = spec::Spectrogram::from_samples(
+        &samples, fftsize,
+        header.sampling_rate, header.channel_count
+    );
     //dbg!(&mag);
-    let time: Vec<Vec<usize>> = starts.iter().map(|start| vec![*start+fftsize/4;fftsize/2]).collect();
 
     let freqbins: Vec<f32> = (1..fftsize/2).map(|v| (v as f32).log2()).collect::<Vec<_>>();
 
@@ -86,9 +65,6 @@ fn main() -> Result<(), std::io::Error> {
     let xbins = r.to_vec().into_iter().map(OrderedFloat).max().unwrap();
     let xbinsf: f32 = xbins.into();
     let onefreq = freqbins.iter().filter(|f| OrderedFloat(**f) >= xbins).map(|f| f - xbinsf).collect::<Vec<_>>();
-
-    //let flatmag = mag.into_iter().flatten().collect::<Vec<_>>();
-    //let flattime = time.into_iter().flatten().collect::<Vec<_>>();
 
     let makeColorer = |min: spec::Freq, max: spec::Freq| {
         let halfrange = (max.log2()-min.log2())/2.0;
@@ -104,8 +80,8 @@ fn main() -> Result<(), std::io::Error> {
     let mapped_range = freq_range.map(|v| (v as f64).log2());
     let mapped_span = mapped_range.1 - mapped_range.0;
 
-    let mut slice = mag.iter().cycle();
-    let colorer = makeColorer(absmin, absmax);
+    let mut slice = spectrogram.columns.iter().cycle();
+    let colorer = makeColorer(spectrogram.min_mag, spectrogram.max_mag);
 
     let mut window: PistonWindow =
         WindowSettings::new("Hello World!", [512; 2])
