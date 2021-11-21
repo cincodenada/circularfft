@@ -21,9 +21,9 @@ struct OctaveSharder {
     min: FftFreq,
     max: FftFreq
 }
-impl Sharder<&FftBin> for OctaveSharder {
-    fn shard(&self, freq: &&FftBin) -> Option<usize> {
-        match *freq {
+impl Sharder<FftBin> for OctaveSharder {
+    fn shard(&self, freq: &FftBin) -> Option<usize> {
+        match freq {
             v if v.freq < self.min => None,
             v if v.freq > self.max => None,
             v => Some(v.freq.log2().floor() as usize)

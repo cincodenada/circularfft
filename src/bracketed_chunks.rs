@@ -6,6 +6,7 @@ enum State {
     Exhausted
 }
 
+#[derive(Debug,PartialEq)]
 pub enum ShardResult<T, U> {
   Start(U),
   Item(T),
@@ -147,7 +148,18 @@ mod tests {
             */
         }
 
-        let bracketed = dbgIter((5..50).step_by(10).bracketed_chunks(IntSharder { min: 10, max: 40, span: 10 }));
-        assert!(itertools::equal([10,15,20,25,30,35,40], bracketed));
+        let bracketed = dbgIter((5..50).step_by(10)
+          .bracketed_chunks(IntSharder { min: 10, max: 40, span: 10 }));
+        assert!(itertools::equal([
+            ShardResult::Start(1),
+            ShardResult::Item(15),
+            ShardResult::End(1),
+            ShardResult::Start(2),
+            ShardResult::Item(25),
+            ShardResult::End(2),
+            ShardResult::Start(3),
+            ShardResult::Item(35),
+            ShardResult::End(3)
+        ], bracketed));
     }
 }
