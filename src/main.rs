@@ -21,9 +21,9 @@ struct OctaveSharder {
     min: FftFreq,
     max: FftFreq
 }
-impl Sharder<FftBin> for OctaveSharder {
-    fn shard(&self, freq: &FftBin) -> Option<usize> {
-        match freq {
+impl Sharder<&FftBin> for OctaveSharder {
+    fn shard(&self, freq: &&FftBin) -> Option<usize> {
+        match *freq {
             v if v.freq < self.min => None,
             v if v.freq > self.max => None,
             v => Some(v.freq.log2().floor() as usize)
@@ -268,65 +268,34 @@ fn dbgIter<I, T>(it: I) -> impl Iterator<Item=T> where I: Iterator<Item=T>, T: s
     collected.into_iter()
 }
 
-fn make_rectangles(col: &FftResult, clip: (f32, f32)) -> (Vec<(f32, [[f64;2];4])>, f32, f32) {
+fn make_rectangles(col: &FftResult, clip: (f32, f32)) -> Vec<(f32, [[f64;2];4])> {
     let sharder = OctaveSharder { min: clip.0, max: clip.1 };
-    let bins = col.bins.into_iter().skip(1)
-        .filter(|bin| bin.freq >= clip.0 && bin.freq < clip.1);
-    let boxed = bins.bracketed_chunks(sharder)
-        .map(|bin| ((bin.freq-clip.0+1.0).log2(), bin.mag.log2()));
-    // TODO: Do....not that ^^
-    //dbg!(&boxed.clone().collect::<Vec<_>>());
-
-    let mut minval = f32::INFINITY;
-    let mut maxval = f32::NEG_INFINITY;
-    let rects = boxed.tuple_windows().map(|((f, m), (nextf, nextm))| {
-        if m < minval { minval = m }
-        if m > maxval { maxval = m }
-        match nextf.floor() - f.floor() {
-            0.0 => vec![
-                [
-                    [f.fract(), f.floor()],
-                    [f.fract(), f.floor()+1.0],
-                    [nextf.fract(), f.floor()+1.0],
-                    [nextf.fract(), f.floor()]
-                ]
-            ],
-            1.0 => vec![
-                [
-                    [f.fract(), f.floor()],
-                    [f.fract(), f.floor()+1.0],
-                    [1.0, f.floor()+1.0],
-                    [1.0, f.floor()]
-                ],
-                [
-                    [0.0, f.floor()],
-                    [0.0, f.floor()+1.0],
-                    [nextf.fract(), f.floor()+1.0],
-                    [nextf.fract(), f.floor()]
-                ]
-            ],
-            d => vec![
-                [
-                    [0.0, f.floor()],
-                    [0.0, f.floor()+d],
-                    [f.fract(), f.floor()+d],
-                    [f.fract(), f.floor()]
-                ],
-                [
-                    [f.fract(), f.floor()],
-                    [f.fract(), f.floor()+d],
-                    [1.0, f.floor()+d],
-                    [1.0, f.floor()]
-                ],
-                [
-                    [0.0, f.floor()],
-                    [0.0, f.floor()+1.0],
-                    [nextf.fract(), f.floor()+1.0],
-                    [nextf.fract(), f.floor()]
-                ]
-            ]
-        }.into_iter().map(move |rect| (m, rect.map(|r| r.map(f64::from))))
-    }).flatten().collect();
-
-    (rects, minval, maxval)
+    let from_shard = |shard| 2_u32.pow(shard as u32) as f32;
+    col.bins.iter().skip(1)
+        .filter(|bin| bin.freq >= clip.0 && bin.freq < clip.1)
+        .bracketed_chunks(sharder)
+        .tuple_windows()
+        .filter_map(|v| {
+            match v {
+                (ShardResult::Start(shard), ShardResult::Item(bin)) => Some([
+                    [from_shard(shard), bin.freq.floor()],
+                    [from_shard(shard), bin.freq.floor()+1.0],
+                    [bin.freq.fract(), bin.freq.floor()+1.0],
+                    [bin.freq.fract(), bin.freq.floor()]
+                ]),
+                (ShardResult::Item(start), ShardResult::Item(end)) => Some([
+                    [start.freq.fract(), start.freq.floor()],
+                    [start.freq.fract(), start.freq.floor()+1.0],
+                    [end.freq.fract(), start.freq.floor()+1.0],
+                    [end.freq.fract(), start.freq.floor()]
+                ]),
+                (ShardResult::Item(bin), ShardResult::End(shard)) => Some([
+                    [bin.freq.fract(), bin.freq.floor()],
+                    [bin.freq.fract(), bin.freq.floor()+1.0],
+                    [from_shard(shard+1), bin.freq.floor()+1.0],
+                    [from_shard(shard+1), bin.freq.floor()]
+                ]),
+                _ => None
+            }
+        }).collect()
 }

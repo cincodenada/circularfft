@@ -6,7 +6,7 @@ enum State {
     Exhausted
 }
 
-#[derive(Debug,PartialEq)]
+#[derive(Debug,PartialEq,Clone)]
 pub enum ShardResult<T, U> {
   Start(U),
   Item(T),
