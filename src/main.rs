@@ -32,6 +32,10 @@ impl Sharder<&spec::Bin> for OctaveSharder {
     }
 }
 
+type ScreenPoint = (f64, f64);
+type FreqRange = (f32, f32);
+type OctRange = (usize, usize);
+
 fn main() -> Result<(), std::io::Error> {
     let fftsize = 2_usize.pow(14);
 
@@ -181,7 +185,7 @@ fn dbgIter<I, T>(it: I) -> impl Iterator<Item=T> where I: Iterator<Item=T>, T: s
     collected.into_iter()
 }
 
-fn make_rectangles(col: &spec::Column, clip: (f32, f32)) -> Vec<(f32, [[f64;2];4])> {
+fn make_bins(col: &spec::Column, clip: FreqRange) -> Vec<(spec::Mag, FreqRange, OctRange)> {
     let sharder = OctaveSharder { min: clip.0, max: clip.1 };
     let bounds = (0.0, 1.0);
     col.bins.iter().skip(1)
@@ -193,66 +197,56 @@ fn make_rectangles(col: &spec::Column, clip: (f32, f32)) -> Vec<(f32, [[f64;2];4
                 (ShardResult::Start(cur_shard, cur), ShardResult::Start(next_shard, next)) => vec![
                     (
                         cur.mag,
-                        [
-                            [bounds.0, cur_shard as f32],
-                            [bounds.0, next_shard as f32],
-                            [cur.freq_fract, next_shard as f32],
-                            [cur.freq_fract, cur_shard as f32]
-                        ]
+                        (bounds.0, cur.freq_fract),
+                        (cur_shard, next_shard)
                     ),
                     (
                         cur.mag,
-                        [
-                            [cur.freq_fract, cur_shard as f32],
-                            [cur.freq_fract, next_shard as f32],
-                            [bounds.1, next_shard as f32],
-                            [bounds.1, cur_shard as f32]
-                        ]
+                        (cur.freq_fract, bounds.1),
+                        (cur_shard, next_shard)
                     )
                 ],
                 (ShardResult::Start(prev_shard, prev), ShardResult::Item(cur_shard, cur)) => vec![
                     (
                         cur.mag,
-                        [
-                            [bounds.0, cur_shard as f32],
-                            [bounds.0, (cur_shard + 1) as f32],
-                            [prev.freq_fract, (cur_shard + 1) as f32],
-                            [prev.freq_fract, cur_shard as f32]
-                        ]
+                        (bounds.0, prev.freq_fract),
+                        (cur_shard, cur_shard + 1)
                     ),
                     (
                         cur.mag,
-                        [
-                            [prev.freq_fract, cur_shard as f32],
-                            [prev.freq_fract, (cur_shard + 1) as f32],
-                            [cur.freq_fract, (cur_shard + 1) as f32],
-                            [cur.freq_fract, cur_shard as f32]
-                        ]
+                        (prev.freq_fract, cur.freq_fract),
+                        (cur_shard, cur_shard + 1)
                     )
                 ],
                 (ShardResult::Item(prev_shard, prev), ShardResult::Item(cur_shard, cur)) => vec![
                     (
                         cur.mag,
-                        [
-                            [prev.freq_fract, cur_shard as f32],
-                            [prev.freq_fract, (cur_shard + 1) as f32],
-                            [cur.freq_fract, (cur_shard + 1) as f32],
-                            [cur.freq_fract, cur_shard as f32]
-                        ]
+                        (prev.freq_fract, cur.freq_fract),
+                        (cur_shard, cur_shard + 1)
                     )
                 ],
                 (ShardResult::Item(prev_shard, prev), ShardResult::Start(cur_shard, cur)) => vec![
                     (
                         cur.mag,
-                        [
-                            [prev.freq_fract, cur_shard as f32],
-                            [prev.freq_fract, (cur_shard + 1) as f32],
-                            [bounds.1, (cur_shard + 1) as f32],
-                            [bounds.1, cur_shard as f32]
-                        ]
+                        (prev.freq_fract, bounds.1),
+                        (cur_shard, cur_shard + 1)
                     )
                 ],
                 _ => vec![]
-            }.into_iter().map(|(m, rect)| (m, rect.map(|p| p.map(|c| c as f64))))
+            }
         }).flatten().collect()
+}
+
+fn make_rectangles(col: &spec::Column, clip: FreqRange) -> Vec<(f32, [[f64;2];4])> {
+    make_bins(col, clip).into_iter()
+        .map(|(m, x, y)| {
+            let x = x.map(|v| v as f64);
+            let y = y.map(|v| v as f64);
+            (m, [
+                [x.0, y.0],
+                [x.0, y.1],
+                [x.1, y.1],
+                [x.1, y.0]
+            ])
+        }).collect()
 }
