@@ -185,14 +185,14 @@ fn dbgIter<I, T>(it: I) -> impl Iterator<Item=T> where I: Iterator<Item=T>, T: s
     collected.into_iter()
 }
 
-fn make_bins(col: &spec::Column, clip: FreqRange) -> Vec<(spec::Mag, FreqRange, OctRange)> {
+fn make_bins<'a>(col: &'a spec::Column, clip: FreqRange) -> impl Iterator<Item=(spec::Mag, FreqRange, OctRange)> + 'a {
     let sharder = OctaveSharder { min: clip.0, max: clip.1 };
     let bounds = (0.0, 1.0);
     col.bins.iter().skip(1)
-        .filter(|bin| bin.freq >= clip.0 && bin.freq < clip.1)
+        .filter(move |bin| bin.freq >= clip.0 && bin.freq < clip.1)
         .bracketed_chunks(sharder)
         .tuple_windows()
-        .map(|v| {
+        .map(move |v| {
             match v {
                 (ShardResult::Start(cur_shard, cur), ShardResult::Start(next_shard, next)) => vec![
                     (
@@ -234,7 +234,7 @@ fn make_bins(col: &spec::Column, clip: FreqRange) -> Vec<(spec::Mag, FreqRange, 
                 ],
                 _ => vec![]
             }
-        }).flatten().collect()
+        }).flatten()
 }
 
 fn make_rectangles(col: &spec::Column, clip: FreqRange) -> Vec<(f32, [[f64;2];4])> {
