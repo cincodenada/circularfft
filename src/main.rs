@@ -27,7 +27,7 @@ impl Sharder<&spec::Bin> for OctaveSharder {
         match *freq {
             v if v.freq < self.min => None,
             v if v.freq > self.max => None,
-            v => Some(v.freq_log.floor() as usize)
+            v => Some(v.freq_whole as usize)
         }
     }
 }
@@ -196,15 +196,15 @@ fn make_rectangles(col: &spec::Column, clip: (f32, f32)) -> Vec<(f32, [[f64;2];4
                         [
                             [bounds.0, cur_shard as f32],
                             [bounds.0, next_shard as f32],
-                            [cur.freq.fract(), next_shard as f32],
-                            [cur.freq.fract(), cur_shard as f32]
+                            [cur.freq_fract, next_shard as f32],
+                            [cur.freq_fract, cur_shard as f32]
                         ]
                     ),
                     (
                         cur.mag,
                         [
-                            [cur.freq.fract(), cur_shard as f32],
-                            [cur.freq.fract(), next_shard as f32],
+                            [cur.freq_fract, cur_shard as f32],
+                            [cur.freq_fract, next_shard as f32],
                             [bounds.1, next_shard as f32],
                             [bounds.1, cur_shard as f32]
                         ]
@@ -215,10 +215,10 @@ fn make_rectangles(col: &spec::Column, clip: (f32, f32)) -> Vec<(f32, [[f64;2];4
                     (
                         cur.mag,
                         [
-                            [prev.freq.fract(), cur_shard as f32],
-                            [prev.freq.fract(), (cur_shard + 1) as f32],
-                            [cur.freq.fract(), (cur_shard + 1) as f32],
-                            [cur.freq.fract(), cur_shard as f32]
+                            [prev.freq_fract, cur_shard as f32],
+                            [prev.freq_fract, (cur_shard + 1) as f32],
+                            [cur.freq_fract, (cur_shard + 1) as f32],
+                            [cur.freq_fract, cur_shard as f32]
                         ]
                     )
                 ],

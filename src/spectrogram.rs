@@ -9,14 +9,17 @@ pub struct Bin {
     pub val: Point,
     pub freq: Freq,
     pub mag: Mag,
-    pub freq_log: Freq
+    pub freq_whole: Freq,
+    pub freq_fract: Freq
 }
 impl Bin {
     fn from_sample(idx: usize, val: Point, half_size: usize, max_freq: Freq) -> Bin {
         let freq = (idx as Freq/half_size as Freq)*max_freq;
+        let freq_log = freq.log2();
         Bin {
             freq, val,
-            freq_log: freq.log2(),
+            freq_whole: freq_log.floor(),
+            freq_fract: freq_log.fract(),
             mag: val.norm()
         }
     }
