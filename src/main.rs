@@ -20,18 +20,29 @@ use itertools::Itertools;
 struct OctaveSharder {
     min: FftFreq,
     max: FftFreq,
-    shard: usize
 }
-impl Sharder<FftFreq> for OctaveSharder {
-    fn shard(&self, freq: &FftFreq) -> Option<usize> {
+impl Sharder<FftBin> for OctaveSharder {
+    fn shard(&self, freq: &FftBin) -> Option<usize> {
         match freq {
-            v if *v < self.min => None,
-            v if *v > self.max => None,
-            v => Some(v.log2().floor() as usize)
+            v if v.freq < self.min => None,
+            v if v.freq > self.max => None,
+            v => Some(v.freq.log2().floor() as usize)
         }
     }
-    fn shard_start(&self, shard: usize) -> f32 { 2_usize.pow(shard as u32) as f32 }
-    fn shard_end(&self, shard: usize) -> f32 { 2_usize.pow(shard as u32+1) as f32 }
+    fn shard_start(&self, shard: usize) -> FftBin {
+        FftBin {
+            freq: 2_usize.pow(shard as u32) as f32,
+            mag: 0.0,
+            val: 0.0.into()
+        }
+    }
+    fn shard_end(&self, shard: usize) -> FftBin {
+        FftBin {
+            freq: 2_usize.pow(shard as u32+1) as f32,
+            mag: 0.0,
+            val: 0.0.into()
+        }
+    }
 }
 
 type FftFreq = f32;
@@ -253,11 +264,11 @@ fn dbgIter<I, T>(it: I) -> impl Iterator<Item=T> where I: Iterator<Item=T>, T: s
     collected.into_iter()
 }
 
-/*
 fn make_rectangles(col: &FftResult, clip: (f32, f32)) -> (Vec<(f32, [[f64;2];4])>, f32, f32) {
-    let bins = col.bins.iter().skip(1)
+    let sharder = OctaveSharder { min: clip.0, max: clip.1 };
+    let bins = col.bins.into_iter().skip(1)
         .filter(|bin| bin.freq >= clip.0 && bin.freq < clip.1);
-    let boxed = bins.bracketed_chunks(clip.0, clip.1)
+    let boxed = bins.bracketed_chunks(sharder)
         .map(|bin| ((bin.freq-clip.0+1.0).log2(), bin.mag.log2()));
     // TODO: Do....not that ^^
     //dbg!(&boxed.clone().collect::<Vec<_>>());
@@ -315,4 +326,3 @@ fn make_rectangles(col: &FftResult, clip: (f32, f32)) -> (Vec<(f32, [[f64;2];4])
 
     (rects, minval, maxval)
 }
-*/
