@@ -69,7 +69,7 @@ where
 }
 
 pub trait Bracketed: Iterator {
-    fn bracketed_chunks<T>(self) -> BracketedChunks<Self>
+    fn bracketed_chunks(self) -> BracketedChunks<Self>
         where Self:Sized
     {
         BracketedChunks {
@@ -108,6 +108,6 @@ mod tests {
         }
 
         let bracketed = dbgIter((5..50).step_by(10).bracketed_chunks());
-        assert!(itertools::equal([10,15,20,20,25,30,30,35,40], bracketed));
+        assert!(itertools::equal([10,15,20,25,30,35,40], bracketed));
     }
 }

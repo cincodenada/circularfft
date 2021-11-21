@@ -18,10 +18,15 @@ use ordered_float::OrderedFloat;
 use itertools::Itertools;
 
 impl Shardable for f32 {
-    fn shard(&self) -> usize {
-        self.floor() as usize
+    fn shard(&self) -> Option<usize> {
+        match self {
+            v if *v < 16.35 => None,
+            v if *v > 8372.02 => None,
+            v => Some(v.log2().floor() as usize)
+        }
     }
-    fn from_shard(shard: usize) -> f32 { shard as f32 }
+    fn shard_start(shard: usize) -> f32 { 2_usize.pow(shard as u32) as f32 }
+    fn shard_end(shard: usize) -> f32 { 2_usize.pow(shard as u32+1) as f32 }
 }
 
 type FftFreq = f32;
