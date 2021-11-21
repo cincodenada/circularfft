@@ -29,21 +29,32 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         let (state, cur, next) = match (&self.state, &self.candidate) {
             (State::Start, None) => {
-                let first = self.source.find(|v| v.shard().is_some());
-                (Shardable::shard_start(first.shard()), first, State::Passthrough)
+                let first = self.source.find(|v| v.shard().is_some()).unwrap();
+                (State::Passthrough, Some(Shardable::shard_start(first.shard().unwrap())), Some(first))
             },
-            (State::Passthrough, Some(c)) => match (self.source.next(), c.shard()) {
-                (Some(next), Some(shard)) if shard == next.shard() =>
-                    (State::Passthrough, self.candidate, Some(next)),
-                (Some(next), Some(shard)) =>
-                    (State::NewShard, self.candidate, Some(next)),
-                (_, None) =>
-                    (State::Finish, Some(c), Shardable::shard_end(c.shard()))
+            (State::Start, Some(_)) =>
+                panic!("Invalid state, Start with candidate!"),
+            (State::Passthrough, Some(c)) => match (c.shard(), self.source.next()) {
+                // Cur is valid, and we have a next
+                (Some(shard), Some(next)) => match next.shard() {
+                    Some(next_shard) if shard == next_shard =>
+                        (State::Passthrough, self.candidate, Some(next)),
+                    Some(_) =>
+                        (State::NewShard, self.candidate, Some(next)),
+                    None => 
+                        (State::Finish, self.candidate, Some(Shardable::shard_end(shard)))
+                },
+                // Cur is valid, but no next
+                (Some(shard), None) =>
+                    (State::Finish, self.candidate, Some(Shardable::shard_end(shard))),
+                // Cur is invalid
+                (None, _) =>
+                    panic!("Invalid state, passthrough with out-of-range value!")
             },
             (State::Passthrough, None) =>
                 panic!("Invalid state, passthrough without candidate!"),
             (State::NewShard, Some(c)) => 
-                (State::Passthrough, Some(Self::Item::shard_start(c.shard())), self.candidate),
+                (State::Passthrough, Some(Self::Item::shard_start(c.shard().unwrap())), self.candidate),
             (State::NewShard, None) =>
                 panic!("Invalid state, new shard without candidate!"),
             (State::Finish, _) => 
@@ -87,8 +98,8 @@ mod tests {
         impl Shardable for usize {
             fn shard(&self) -> Option<usize> {
                 match self {
-                    v if v < 10 => None,
-                    v if v > 40 => None,
+                    v if *v < 10 => None,
+                    v if *v > 40 => None,
                     v => Some(v/10)
                 }
             }
