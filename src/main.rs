@@ -98,7 +98,10 @@ fn main() -> Result<(), std::io::Error> {
             let dims = c.viewport.unwrap().draw_size.map(f64::from);
             rects.into_iter().map(|(val, points)| polygon(
                 colorer(val),
-                &points.map(|p| [p[0]*dims[0], (p[1]-mapped_range.0)/mapped_span*dims[1]]),
+                &points.map(|p| [
+                    (dims[0]/2.0)*(p[0]/mapped_span+1.0),
+                    (dims[1]/2.0)*(p[1]/mapped_span+1.0),
+                ]),
                 c.transform, g
             )).last();
         });
@@ -238,9 +241,9 @@ fn make_bins<'a>(col: &'a spec::Column, clip: FreqRange) -> impl Iterator<Item=(
 }
 
 fn make_wedges<'a>(col: &'a spec::Column, clip: FreqRange) -> impl Iterator<Item=(f32, [[f64;2];4])> + 'a {
-    let polar = |thetaish, r| {
+    let polar = move |thetaish, r| {
         let theta: f64 = thetaish as f64*2.0*std::f64::consts::PI;
-        let r = r as f64;
+        let r = (r as f32 - clip.0.log2()) as f64;
         [r * theta.cos(), r * theta.sin()]
     };
     make_bins(col, clip)
