@@ -11,9 +11,14 @@ path="src/bracketed_chunks.rs"
 [dependencies]
 rustfft = "6.0.1"
 wav = "1.0.0"
-inline-python = "0.7.1"
+#inline-python = "0.7.1"
 ordered-float = "2.8.0"
 itertools = "0.10.1"
 piston_window = "*"
 tuple = "0.5.1"
-druid = "0.7.0"
+druid = { git = "https://github.com/linebender/druid", rev = "0a82b127eac325c9c721364a5d81f1bfd931cb13" }
+druid-widget-nursery = { git = "https://github.com/linebender/druid-widget-nursery" }
+
+[patch.crates-io]
+druid = { git = "https://github.com/linebender/druid" }
+

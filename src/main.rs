@@ -11,7 +11,8 @@ use piston_window::*;
 use tuple::*;
 
 use druid::widget::{Button, Flex, Label};
-use druid::{AppLauncher, LocalizedString, PlatformError, Widget, WidgetExt, WindowDesc, Data};
+use druid::{AppLauncher, LocalizedString, PlatformError, Widget, WidgetExt, WindowDesc, Data, Lens};
+use druid_widget_nursery::DropdownSelect;
 
 use std::env;
 use std::time::{Duration, SystemTime};
@@ -19,7 +20,7 @@ use std::fs::File;
 use std::path::Path;
 use wav::BitDepth;
 use std::convert::TryFrom;
-use inline_python::python;
+//use inline_python::python;
 use ordered_float::OrderedFloat;
 use itertools::Itertools;
 
@@ -64,9 +65,9 @@ impl Colorer<spec::Freq> {
 
 fn main() -> Result<(), std::io::Error> {
     let args = env::args().collect::<Vec<_>>();
-    let fftpow = args[1].parse::<u32>().unwrap();
-    let overlap = args[2].parse::<f32>().unwrap();
-    let speed = args[3].parse::<f32>().unwrap();
+    let fftpow = args[1].parse::<u32>().unwrap_or(13);
+    let overlap = args[2].parse::<f32>().unwrap_or(0.5);
+    let speed = args[3].parse::<f32>().unwrap_or(1.0);
 
     let fftsize = 2_usize.pow(fftpow);
     println!("Using fft size of {}, overlap {}", fftsize, overlap);
@@ -106,45 +107,66 @@ fn main() -> Result<(), std::io::Error> {
 #[derive(Clone, Data)]
 struct Counter(i32);
 
+#[derive(Data, Clone, Lens)]
+struct AppData {
+    fft_size: usize,
+    window_type: spec::Window,
+    overlap: f32
+}
+
+
 fn make_druid_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>, spf: std::time::Duration) {
     // Window builder. We set title and size
-    let main_window = WindowDesc::new(build_druid_window)
+    let main_window = WindowDesc::new(build_druid_window())
         .title("Spectrogram Toy")
         .window_size((200.0, 100.0));
 
-    // Data to be used in the app (=state)
-    let data = Counter(0);
+    let state = AppData {
+        fft_size: 8192,
+        window_type: spec::Window::Hann,
+        overlap: 0.8
+    };
 
     // Run the app
     AppLauncher::with_window(main_window)
-        .use_simple_logger() // Neat!
-        .launch(data);
+        .launch(state);
 }
 
-fn build_druid_window() -> impl Widget<Counter> {
+fn build_druid_window() -> impl Widget<AppData> {
     // The label text will be computed dynamically based on the current locale and count
     let text = LocalizedString::new("hello-counter")
         .with_arg("count", |data: &Counter, _env| (*data).0.into());
     let label = Label::new(text).padding(5.0).center();
 
     // Two buttons with on_click callback
-    let button_plus = Button::new("+1")
-        .on_click(|_ctx, data: &mut Counter, _env| (*data).0 += 1)
-        .padding(5.0);
-    let button_minus = Button::new("-1")
-        .on_click(|_ctx, data: &mut Counter, _env| (*data).0 -= 1)
-        .padding(5.0);
 
     // Container for the two buttons
-    let flex = Flex::row()
-        .with_child(button_plus)
-        .with_spacer(1.0)
-        .with_child(button_minus);
+    let fft_size = Flex::row()
+        .with_child(Label::new("Fft Size:").align_left())
+        .with_child(DropdownSelect::<usize>::new(vec![
+                ("4096", 4096),
+                ("8192", 8192),
+                ("16384", 16384)
+            ])
+            .align_left()
+            .lens(AppData::fft_size)
+        );
+    let window_type = Flex::row()
+        .with_child(Label::new("Window Type:").align_left())
+        .with_child(DropdownSelect::<spec::Window>::new(vec![
+                ("Square", spec::Window::Square),
+                ("Hann", spec::Window::Hann),
+                ("Hamming", spec::Window::Hamming),
+                ("Blackman", spec::Window::Blackman)
+            ])
+            .align_left()
+            .lens(AppData::window_type)
+        );
 
     // Container for the whole UI
     Flex::column()
-        .with_child(label)
-        .with_child(flex)
+        .with_child(fft_size)
+        .with_child(window_type)
 }
 
 fn make_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>, spf: std::time::Duration) {
@@ -204,32 +226,32 @@ fn make_circle_plot(spectrogram: &spec::Spectrogram) {
     let mag = spectrogram.columns[100].bins.iter().map(|b| b.mag.log2()).collect::<Vec<_>>();
     let (x, y, values) = make_color_mesh(&mag, &freqbins, &onefreq, xbinsf);
 
-    python! {
-        import matplotlib.pyplot as plt
-        import numpy as np
-        import math
+    //python! {
+    //    import matplotlib.pyplot as plt
+    //    import numpy as np
+    //    import math
 
-        x = [row + [math.pi*2] for row in 'x]
-        x = x + [x[-1]]
-        y = [col + [col[-1]] for col in 'y] + [['y[-1][0]+1] * (len('y[0])+1)]
-        def dims(x):
-            print(len(x))
-            print([len(r) for r in x])
-        dims(x)
-        dims(y)
-        dims('values)
+    //    x = [row + [math.pi*2] for row in 'x]
+    //    x = x + [x[-1]]
+    //    y = [col + [col[-1]] for col in 'y] + [['y[-1][0]+1] * (len('y[0])+1)]
+    //    def dims(x):
+    //        print(len(x))
+    //        print([len(r) for r in x])
+    //    dims(x)
+    //    dims(y)
+    //    dims('values)
 
-        fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
-        ax.set_rmax(3)
-        ax.set_rticks([0.5, 1, 1.5, 2])  # Less radial ticks
-        ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
-        ax.set_xticks([(s+0.5)/12*math.pi*2 for s in range(0,12)])
-        ax.set_xticklabels(['|']*12)
-        ax.grid(True)
+    //    fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
+    //    ax.set_rmax(3)
+    //    ax.set_rticks([0.5, 1, 1.5, 2])  # Less radial ticks
+    //    ax.set_rlabel_position(-22.5)  # Move radial labels away from plotted line
+    //    ax.set_xticks([(s+0.5)/12*math.pi*2 for s in range(0,12)])
+    //    ax.set_xticklabels(['|']*12)
+    //    ax.grid(True)
 
-        plt.pcolormesh(x, y, 'values)
-        plt.show()
-    }
+    //    plt.pcolormesh(x, y, 'values)
+    //    plt.show()
+    //}
 }
 
 fn make_rect_plot(spectrogram: &spec::Spectrogram) {
@@ -254,12 +276,12 @@ fn make_rect_plot(spectrogram: &spec::Spectrogram) {
     dbg!(&bincount);
     dbg!(&freqbins.len());
 
-    python! {
-        import matplotlib.pyplot as plt
+    //python! {
+    //    import matplotlib.pyplot as plt
 
-        plt.hist2d('time, 'freq, ['bincount, 'freqbins],weights='mag)
-        plt.show()
-    }
+    //    plt.hist2d('time, 'freq, ['bincount, 'freqbins],weights='mag)
+    //    plt.show()
+    //}
 
 }
 

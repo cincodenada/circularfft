@@ -2,10 +2,13 @@
 use rustfft::{FftPlanner, num_complex::Complex};
 use itertools::Itertools;
 
+use druid::{Data, Lens};
+
 pub type Freq = f32;
 pub type Mag = f32;
 pub type Point = Complex<Mag>;
 
+#[derive(Clone, Eq, PartialEq, Data)]
 pub enum Window {
 	Square,
 	Hann,
