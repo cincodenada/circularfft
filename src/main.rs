@@ -10,9 +10,10 @@ use spectrogram as spec;
 use piston_window::*;
 use tuple::*;
 
-use druid::widget::{Button, Flex, Label};
-use druid::{AppLauncher, LocalizedString, PlatformError, Widget, WidgetExt, WindowDesc, Data, Lens};
+use druid::widget::{Button, Flex, Label, Painter};
+use druid::{AppLauncher, LocalizedString, PlatformError, Widget, WidgetExt, WindowDesc, Data, Lens, Color, RenderContext};
 use druid_widget_nursery::DropdownSelect;
+use druid::piet::kurbo::{Line, BezPath, PathSeg, PathEl};
 
 use std::env;
 use std::time::{Duration, SystemTime};
@@ -55,11 +56,30 @@ impl Colorer<spec::Freq> {
         Colorer { min, max, halfrange }
     }
 
-    fn map(&self, val: spec::Freq) -> [f32;4] {
+    fn map(&self, val: spec::Freq) -> ArrayColor {
         match (val.log2() - self.min)/self.halfrange {
-            v @ 0.0..=1.0 => [0.0, v/2.0, 0.0, 1.0],
-            v => [v-1.0, v/2.0, 0.0, 1.0],
+            v @ 0.0..=1.0 => [0.0, v/2.0, 0.0, 1.0].into(),
+            v => [v-1.0, v/2.0, 0.0, 1.0].into(),
         }
+    }
+}
+
+struct ArrayColor {
+    color: [f32;4]
+}
+impl From<[f32;4]> for ArrayColor {
+    fn from(c: [f32;4]) -> ArrayColor { ArrayColor { color: c } }
+}
+impl Into<[f32;4]> for ArrayColor {
+    fn into(self) -> [f32;4] { self.color }
+}
+//impl From<ArrayColor> for Color {
+//    fn from(c: ArrayColor) -> Color { c.into() }
+//}
+impl Into<Color> for ArrayColor {
+    fn into(self) -> Color {
+        let c = self.color.map(|v| v as f64);
+        Color::rgba(c[0], c[1], c[2], c[3])
     }
 }
 
@@ -117,7 +137,7 @@ struct AppData {
 
 fn make_druid_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>, spf: std::time::Duration) {
     // Window builder. We set title and size
-    let main_window = WindowDesc::new(build_druid_window())
+    let main_window = WindowDesc::new(build_druid_window(spectrogram, colorer))
         .title("Spectrogram Toy")
         .window_size((200.0, 100.0));
 
@@ -132,7 +152,7 @@ fn make_druid_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Fre
         .launch(state);
 }
 
-fn build_druid_window() -> impl Widget<AppData> {
+fn build_druid_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>) -> impl Widget<AppData> {
     // The label text will be computed dynamically based on the current locale and count
     let text = LocalizedString::new("hello-counter")
         .with_arg("count", |data: &Counter, _env| (*data).0.into());
@@ -164,9 +184,41 @@ fn build_druid_window() -> impl Widget<AppData> {
         );
 
     // Container for the whole UI
-    Flex::column()
+    let controls = Flex::column()
         .with_child(fft_size)
-        .with_child(window_type)
+        .with_child(window_type);
+
+    let freq_range = (16.35, 8372.02);
+    let mapped_range = freq_range.map(|v| (v as f64).log2());
+    let mapped_span = mapped_range.1 - mapped_range.0;
+
+    let col = spectrogram.columns[50].clone();
+
+    let fft = Painter::new(move |ctx, data: &AppData, env| {
+        //ctx.clear([0.5, 0.5, 0.5, 1.0]);
+        let rects = make_wedges(&col, freq_range);
+        let dims = ctx.size();
+        rects.into_iter().map(|(val, points)| {
+            let rect: BezPath = points.map(|p| (
+                    (dims.width/2.0)*(p[0]/mapped_span+1.0),
+                    (dims.height/2.0)*(p[1]/mapped_span+1.0),
+                ))
+                .iter().enumerate().map(|(idx, p)| {
+                    let pt: druid::Point = (*p).into();
+                    match idx {
+                        0 => PathEl::MoveTo(pt),
+                        _ => PathEl::LineTo(pt)
+                    }
+                })
+                .collect();
+            let color: Color = colorer.map(val).into();
+            ctx.fill(rect, &color)
+        }).last();
+    });
+
+    Flex::row()
+        .with_child(fft)
+        .with_child(controls)
 }
 
 fn make_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>, spf: std::time::Duration) {
@@ -193,7 +245,7 @@ fn make_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>, sp
             let rects = make_wedges(col, freq_range);
             let dims = c.viewport.unwrap().draw_size.map(f64::from);
             rects.into_iter().map(|(val, points)| polygon(
-                colorer.map(val),
+                colorer.map(val).into(),
                 &points.map(|p| [
                     (dims[0]/2.0)*(p[0]/mapped_span+1.0),
                     (dims[1]/2.0)*(p[1]/mapped_span+1.0),

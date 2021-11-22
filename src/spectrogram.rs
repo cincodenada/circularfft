@@ -45,6 +45,7 @@ impl Default for Window {
 	fn default() -> Window { Self::Hann }
 }
 
+#[derive(Clone)]
 pub struct Bin {
 	pub val: Point,
 	pub freq: Freq,
@@ -130,7 +131,7 @@ impl Spectrogram {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Column {
 	pub bins: Vec<Bin>,
 	pub max_mag: f32,
