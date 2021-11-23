@@ -198,10 +198,12 @@ fn build_druid_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Fr
         //ctx.clear([0.5, 0.5, 0.5, 1.0]);
         let rects = make_wedges(&col, freq_range);
         let dims = ctx.size();
+
+        let min_dim = std::cmp::min_by(dims.width, dims.height, |a, b| a.partial_cmp(b).unwrap());
         rects.into_iter().map(|(val, points)| {
             let rect: BezPath = points.map(|p| (
-                    (dims.width/2.0)*(p[0]/mapped_span+1.0),
-                    (dims.height/2.0)*(p[1]/mapped_span+1.0),
+                    (min_dim/2.0)*(p[0]/mapped_span+1.0),
+                    (min_dim/2.0)*(p[1]/mapped_span+1.0),
                 ))
                 .iter().enumerate().map(|(idx, p)| {
                     let pt: druid::Point = (*p).into();
@@ -217,7 +219,7 @@ fn build_druid_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Fr
     });
 
     Flex::row()
-        .with_child(fft)
+        .with_flex_child(fft.expand(), 1.0)
         .with_child(controls)
 }
 
