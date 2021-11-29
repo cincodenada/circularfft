@@ -8,9 +8,9 @@ pub type Freq = f32;
 pub type Mag = f32;
 pub type Point = Complex<Mag>;
 
-#[allow(non_snake_case)]
 trait WindowFunc {
-	fn func(&self, N: f32, n: f32, v: f32) -> f32;
+  #[allow(non_snake_case)]
+	fn func(&self, N: f32, n: f32) -> f32;
 }
 struct CosineSumFunc { a0: f32, a1: f32, a2: f32 }
 impl CosineSumFunc {
@@ -18,14 +18,15 @@ impl CosineSumFunc {
   fn simple(a0: f32) -> Self { Self::new(a0, 1.0-a0, 0.0) }
 }
 impl WindowFunc for CosineSumFunc {
-	fn func(&self, N: f32, n: f32, v: f32) -> f32 {
+  #[allow(non_snake_case)]
+	fn func(&self, N: f32, n: f32) -> f32 {
       let term: f32 = 2.0*std::f32::consts::PI*n/N;
       self.a0 - self.a1*term.cos() + self.a2*(2.0*term).cos()
   }
 }
 struct IdentityFunc {}
 impl WindowFunc for IdentityFunc {
-	fn func(&self, _: f32, _: f32, v: f32) -> f32 { v }
+	fn func(&self, _: f32, _: f32) -> f32 { 1.0 }
 }
 
 #[derive(Clone, Eq, PartialEq, Data, Copy)]
@@ -41,7 +42,7 @@ impl Window {
 		let N = samples.len() as f32;
     let window = self.get_func();
 		samples.into_iter().enumerate().map(
-			|(n, v)| window.func(N, n as f32, v.re).into()
+			|(n, v)| (v.re * window.func(N, n as f32)).into()
 		).collect()
 	}
 
