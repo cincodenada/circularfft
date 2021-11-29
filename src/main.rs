@@ -16,7 +16,7 @@ use druid::{Color, RenderContext};
 use druid::{Command, Selector, Target};
 use druid::{Widget, WidgetExt, Env, WidgetId, LifeCycle, Event};
 use druid_widget_nursery::DropdownSelect;
-use druid::widget::{Controller, Button, Flex, Label, Painter};
+use druid::widget::{Controller, Button, Flex, Label, Painter, IdentityWrapper};
 use druid::piet::kurbo::{Line, BezPath, PathSeg, PathEl};
 use druid::im;
 
@@ -126,9 +126,7 @@ fn main() -> Result<(), std::io::Error> {
     let ms_per_col = (((fftsize as f32 * (1.0-overlap))/header.sampling_rate as f32)/speed*1000.0) as u64;
     dbg!(ms_per_col);
 
-    let colorer = Colorer::new(spectrogram.min_mag, spectrogram.max_mag);
-
-    make_druid_window();
+    make_druid_window(spectrogram);
     //make_window(&spectrogram, colorer, Duration::from_millis(ms_per_col.into()));
     //make_circle_plot(&spectrogram);
     //make_rect_plot(&spectrogram);
@@ -165,18 +163,8 @@ impl<W: Widget<AppData>> Controller<AppData, W> for FftParameter {
         }, self.fft_widget_id))
     }
 }
-struct FftWidget {
-    spectrogram: spec::Spectrogram,
-    id: WidgetId
-}
+struct FftWidget { spectrogram: spec::Spectrogram }
 impl<W: Widget<AppData>> Controller<AppData, W> for FftWidget {
-    fn lifecycle(&mut self, child: &mut W, ctx: &mut druid::LifeCycleCtx, event: &LifeCycle, data: &AppData, env: &Env) {
-        match event {
-            LifeCycle::WidgetAdded => { self.id = ctx.widget_id(); },
-            _ => {}
-        };
-        child.lifecycle(ctx, event, data, env)
-    }
     fn event(&mut self, child: &mut W, ctx: &mut druid::EventCtx, event: &druid::Event, data: &mut AppData, env: &Env) {
         match event {
             Event::Command(cmd) => match cmd.get(FFT_CALC_SELECTOR) {
@@ -196,34 +184,28 @@ impl<W: Widget<AppData>> Controller<AppData, W> for FftWidget {
 }
 
 
-fn make_druid_window() {
-    // Window builder. We set title and size
-    let main_window = WindowDesc::new(build_druid_window())
-        .title("Spectrogram Toy")
-        .window_size((200.0, 100.0));
-
+fn make_druid_window(spectrogram: spec::Spectrogram) {
     let state = AppData {
-        fft_size: 8192,
-        window_type: spec::Window::Hann,
-        overlap: 0.8,
+        fft_size: spectrogram.params.fft_size,
+        window_type: spectrogram.params.window_type,
+        overlap: spectrogram.params.overlap,
         fft_cols: im::Vector::new(),
         fft_range: (0.0, 0.0)
     };
+
+    // Window builder. We set title and size
+    let main_window = WindowDesc::new(build_druid_window(spectrogram))
+        .title("Spectrogram Toy")
+        .window_size((200.0, 100.0));
 
     // Run the app
     AppLauncher::with_window(main_window)
         .launch(state);
 }
 
-fn build_druid_window() -> impl Widget<AppData> {
-    // The label text will be computed dynamically based on the current locale and count
-    let text = LocalizedString::new("hello-counter")
-        .with_arg("count", |data: &Counter, _env| (*data).0.into());
-    let label = Label::new(text).padding(5.0).center();
+fn build_druid_window(spectrogram: spec::Spectrogram) -> impl Widget<AppData> {
+    let fft_widget_id = WidgetId::next();
 
-    // Two buttons with on_click callback
-
-    // Container for the two buttons
     let fft_size = Flex::row()
         .with_child(Label::new("Fft Size:").align_left())
         .with_child(DropdownSelect::<usize>::new(vec![
@@ -233,6 +215,7 @@ fn build_druid_window() -> impl Widget<AppData> {
             ])
             .align_left()
             .lens(AppData::fft_size)
+            .controller(FftParameter{fft_widget_id})
         );
     let window_type = Flex::row()
         .with_child(Label::new("Window Type:").align_left())
@@ -244,6 +227,7 @@ fn build_druid_window() -> impl Widget<AppData> {
             ])
             .align_left()
             .lens(AppData::window_type)
+            .controller(FftParameter{fft_widget_id})
         );
 
     // Container for the whole UI
@@ -255,20 +239,9 @@ fn build_druid_window() -> impl Widget<AppData> {
     let mapped_range = freq_range.map(|v| (v as f64).log2());
     let mapped_span = mapped_range.1 - mapped_range.0;
 
-    let fft = Painter::new(move |ctx, data: &AppData, env| {
-        let mut inp_file = File::open(Path::new("input.wav")).unwrap();
-        let (header, wavdata) = wav::read(&mut inp_file).unwrap();
-
-        let samples : Vec<_> = match wavdata {
-            //BitDepth::Sixteen(vec) => vec.into_iter().collect(),
-            //BitDepth::TwentyFour(vec) => vec.into_iter().collect(),
-            //BitDepth::ThirtyTwoFloat(vec) => vec.into_iter().collect(),
-            // TODO: We probably shouldn't need to collect() here
-            BitDepth::ThirtyTwoFloat(vec) => vec,
-            _ => panic!("Ack!"),
-            BitDepth::Empty => panic!("Ack!")
-        };
-        dbg!(&header);
+    let fft = IdentityWrapper::wrap(Painter::new(move |ctx, data: &AppData, env| {
+        dbg!(data.fft_cols.len());
+        if(data.fft_cols.len() < 50) { return }
 
         let col = &data.fft_cols[50];
         // TODO: Push colorer itself into state?
@@ -295,7 +268,7 @@ fn build_druid_window() -> impl Widget<AppData> {
             let color: Color = colorer.map(val).into();
             ctx.fill(rect, &color)
         }).last();
-    });
+    }), fft_widget_id).controller(FftWidget{ spectrogram });
 
     Flex::row()
         .with_flex_child(fft.expand(), 1.0)
