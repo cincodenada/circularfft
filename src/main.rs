@@ -260,7 +260,7 @@ fn build_druid_window(spectrogram: spec::Spectrogram) -> impl Widget<AppData> {
         let colorer = Colorer::new(data.fft_range.0, data.fft_range.1);
 
         //ctx.clear([0.5, 0.5, 0.5, 1.0]);
-        let rects = make_wedges(octave_bins(&col, freq_range));
+        let rects = make_wedges(octave_bins(&col, freq_range), freq_range.0);
         let dims = ctx.size();
 
         let min_dim = std::cmp::min_by(dims.width, dims.height, |a, b| a.partial_cmp(b).unwrap());
@@ -308,7 +308,7 @@ fn make_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>, sp
             }
 
             clear([0.5, 0.5, 0.5, 1.0], g);
-            let rects = make_wedges(octave_bins(col, freq_range));
+            let rects = make_wedges(octave_bins(col, freq_range), freq_range.0);
             let dims = c.viewport.unwrap().draw_size.map(f64::from);
             rects.into_iter().map(|(val, points)| polygon(
                 colorer.map(val).into(),
@@ -483,17 +483,14 @@ fn octave_bins<'a>(col: &'a spec::Column, clip: FreqRange) -> impl Iterator<Item
         }).flatten()
 }
 
-fn make_wedges<'a>(bins: impl Iterator<Item=(spec::Mag, FreqRange, OctRange)> + 'a) -> impl Iterator<Item=(f32, [[f64;2];4])> + 'a {
+fn make_wedges<'a>(bins: impl Iterator<Item=(spec::Mag, FreqRange, OctRange)> + 'a, min: f32) -> impl Iterator<Item=(f32, [[f64;2];4])> + 'a {
     let polar = move |thetaish, r, min: f32| {
         let theta: f64 = thetaish as f64*2.0*std::f64::consts::PI;
         let r = (r as f32 - min.log2()) as f64;
         [r * theta.cos(), r * theta.sin()]
     };
 
-    // TODO: Pass this in?
-    let mut min = f32::NAN;
     bins.map(move |(m, x, y)| {
-        if min.is_nan() { min = x.0 }
         (m, [
             polar(x.0, y.0, min),
             polar(x.0, y.1, min),
