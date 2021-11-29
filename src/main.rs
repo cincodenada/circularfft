@@ -10,10 +10,16 @@ use spectrogram as spec;
 use piston_window::*;
 use tuple::*;
 
-use druid::widget::{Button, Flex, Label, Painter};
-use druid::{AppLauncher, LocalizedString, PlatformError, Widget, WidgetExt, WindowDesc, Data, Lens, Color, RenderContext};
+use druid::{AppLauncher, LocalizedString, PlatformError};
+use druid::{Data, Lens};
+use druid::{Color, RenderContext};
+use druid::{Command, Selector, Target};
+use druid::{Widget, WidgetExt, WindowDesc};
 use druid_widget_nursery::DropdownSelect;
+use druid::widget::{Button, Flex, Label, Painter};
 use druid::piet::kurbo::{Line, BezPath, PathSeg, PathEl};
+
+const FFT_CALC_SELECTOR = Selector::new("fft_calc")
 
 use std::env;
 use std::time::{Duration, SystemTime};
@@ -127,11 +133,44 @@ fn main() -> Result<(), std::io::Error> {
 #[derive(Clone, Data)]
 struct Counter(i32);
 
+
+
 #[derive(Data, Clone, Lens)]
 struct AppData {
     fft_size: usize,
     window_type: spec::Window,
-    overlap: f32
+    overlap: f32,
+    fft_cols: im::Vector<spec::Column>
+}
+
+struct FftParameter<W> {
+    fft_widget: &W
+}
+impl<T, W: Widget<T>> Controller<T, W> for FftParameter<W> {
+    fn update(&mut self, child: &mut W, ctx: &mut druid::UpdateCtx, old_data: &T, data: &mut T, env: &Env) {
+        dbg!("Requesting recalculation")
+        const selector = env.get(FFT_CALC_SELECTOR)
+        ctx.submit_command(Command::new(selector, (data.fft_size, data.overlap, data.window_type), self.fft_widget))
+    }
+}
+struct FftWidget {
+    spectrogram: spec::Spectrogram
+}
+impl<T, W: Widget<T>> Controller<T, W> for FftWidget {
+    fn event(&mut self, child: &mut W, ctx: &mut druid::EventCtx, event: &druid::Event, data: &mut T, env: &Env) {
+        switch(event) {
+            Command(cmd) => match cmd.get<FFT_CALC_SELECTOR>() => {
+                Some((fft_size, overlap, window_type)) => {
+                    dbg!("Recalculating");
+                    self.spectrogram.calculate_with(fft_size, overlap, window_type);
+                    self.data.fft_cols = self.spectrogram.columns.into();
+                },
+                None => {}
+            }
+            },
+            _ => {}
+        }
+    }
 }
 
 
