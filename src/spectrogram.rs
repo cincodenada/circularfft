@@ -8,6 +8,26 @@ pub type Freq = f32;
 pub type Mag = f32;
 pub type Point = Complex<Mag>;
 
+#[allow(non_snake_case)]
+trait WindowFunc {
+	fn func(&self, N: f32, n: f32, v: f32) -> f32;
+}
+struct CosineSumFunc { a0: f32, a1: f32, a2: f32 }
+impl CosineSumFunc {
+  fn new(a0: f32, a1: f32, a2: f32) -> Self { Self { a0, a1, a2 } }
+  fn simple(a0: f32) -> Self { Self::new(a0, 1.0-a0, 0.0) }
+}
+impl WindowFunc for CosineSumFunc {
+	fn func(&self, N: f32, n: f32, v: f32) -> f32 {
+      let term: f32 = 2.0*std::f32::consts::PI*n/N;
+      self.a0 - self.a1*term.cos() + self.a2*(2.0*term).cos()
+  }
+}
+struct IdentityFunc {}
+impl WindowFunc for IdentityFunc {
+	fn func(&self, _: f32, _: f32, v: f32) -> f32 { v }
+}
+
 #[derive(Clone, Eq, PartialEq, Data, Copy)]
 pub enum Window {
 	Square,
@@ -15,31 +35,24 @@ pub enum Window {
 	Hamming,
 	Blackman
 }
+#[allow(non_snake_case)]
 impl Window {
-	fn apply(&self, samples: Vec<f32>) -> Vec<f32> {
+	fn apply(&self, samples: Vec<Point>) -> Vec<Point> {
 		let N = samples.len() as f32;
+    let window = self.get_func();
 		samples.into_iter().enumerate().map(
-			|(n, v)| self.getVal(N, n as f32, v)
+			|(n, v)| window.func(N, n as f32, v.re).into()
 		).collect()
 	}
 
-	fn getVal(&self, N: f32, n: f32, v: f32) -> f32 {
-		let CosineSum = |a0: f32, a1: f32, a2: f32| {
-			move |N, n, v| {
-				let term: f32 = 2.0*std::f32::consts::PI*n/N;
-				a0 - a1*term.cos() + a2*(2.0*term).cos()
-			}
-		};
-		let SimpleCosine = move |a0: f32| CosineSum(a0, 1.0-a0, 0.0);
-		let SquareWin = |N, n, v| v;
-
-		match(self) {
-			Square => SquareWin(N, n, v),
-			Hann => SimpleCosine(0.5)(N, n, v),
-			Hamming => SimpleCosine(25.0/46.0)(N, n, v),
-			Blackman => CosineSum(0.42, 0.5, 0.08)(N, n, v)
+  fn get_func(&self) -> Box<dyn WindowFunc> {
+		match self {
+			Self::Square => Box::new(IdentityFunc{}),
+			Self::Hann => Box::new(CosineSumFunc::simple(0.5)),
+			Self::Hamming => Box::new(CosineSumFunc::simple(25.0/46.0)),
+			Self::Blackman => Box::new(CosineSumFunc::new(0.42, 0.5, 0.08))
 		}
-	}
+  }
 }
 impl Default for Window {
 	fn default() -> Window { Self::Hann }
@@ -117,7 +130,9 @@ impl Spectrogram {
 		self.max_mag = f32::NEG_INFINITY;
 
 		self.columns = (0..self.samples.len()-self.params.fft_size).step_by(step).map(|start| {
-			let mut buffer = self.samples[start..start + self.params.fft_size].to_vec();
+			let mut buffer = self.params.window_type.apply(
+        self.samples[start..start + self.params.fft_size].to_vec()
+      );
 			fft.process(&mut buffer);
 			let col = Column::from_bins(self.sample_rate, buffer);
 			if col.min_mag < self.min_mag { self.min_mag = col.min_mag }
