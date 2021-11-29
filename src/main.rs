@@ -431,7 +431,27 @@ fn dbg_iter<I, T>(it: I) -> impl Iterator<Item=T> where I: Iterator<Item=T>, T: 
     collected.into_iter()
 }
 
-fn octave_bins<'a>(col: &'a spec::Column, clip: FreqRange) -> impl Iterator<Item=(spec::Mag, FreqRange, OctRange)> + 'a {
+struct SlimBin {
+    time_range: (usize, usize),
+    freq_range: (spec::Freq, spec::Freq),
+    mag: spec::Mag
+}
+impl SlimBin {
+    fn from_bin(bin: &spec::Bin, time_range: OctRange) -> SlimBin {
+        SlimBin {
+            freq_range: bin.freq_range,
+            mag: bin.mag,
+            time_range
+        }
+    }
+}
+impl From<(spec::Mag, FreqRange, OctRange)> for SlimBin {
+    fn from((mag, freq_range, time_range): (spec::Mag, FreqRange, OctRange)) -> Self {
+        SlimBin { mag, freq_range, time_range }
+    }
+}
+
+fn octave_bins<'a>(col: &'a spec::Column, clip: FreqRange) -> impl Iterator<Item=SlimBin> + 'a {
     let sharder = OctaveSharder { min: clip.0, max: clip.1 };
     let bounds = (0.0, 1.0);
     col.bins.iter().skip(1)
@@ -480,30 +500,30 @@ fn octave_bins<'a>(col: &'a spec::Column, clip: FreqRange) -> impl Iterator<Item
                 ],
                 _ => vec![]
             }
-        }).flatten()
+        }).flatten().map(|v| v.into())
 }
 
-fn make_wedges<'a>(bins: impl Iterator<Item=(spec::Mag, FreqRange, OctRange)> + 'a, min: f32) -> impl Iterator<Item=(f32, [[f64;2];4])> + 'a {
+fn make_wedges<'a>(bins: impl Iterator<Item=SlimBin> + 'a, ymin: f32) -> impl Iterator<Item=(f32, [[f64;2];4])> + 'a {
     let polar = move |thetaish, r, min: f32| {
         let theta: f64 = thetaish as f64*2.0*std::f64::consts::PI;
         let r = (r as f32 - min.log2()) as f64;
         [r * theta.cos(), r * theta.sin()]
     };
 
-    bins.map(move |(m, x, y)| {
-        (m, [
-            polar(x.0, y.0, min),
-            polar(x.0, y.1, min),
-            polar(x.1, y.1, min),
-            polar(x.1, y.0, min)
+    bins.map(move |bin| {
+        (bin.mag, [
+            polar(bin.freq_range.0, bin.time_range.0, ymin),
+            polar(bin.freq_range.0, bin.time_range.1, ymin),
+            polar(bin.freq_range.1, bin.time_range.1, ymin),
+            polar(bin.freq_range.1, bin.time_range.0, ymin)
         ])
     })
 }
-fn make_rectangles<'a>(bins: impl Iterator<Item=(spec::Mag, FreqRange, OctRange)> + 'a) -> impl Iterator<Item=(f32, [[f64;2];4])> + 'a {
-    bins.map(|(m, x, y)| {
-            let x = x.map(|v| v as f64);
-            let y = y.map(|v| v as f64);
-            (m, [
+fn make_rectangles<'a>(bins: impl Iterator<Item=SlimBin> + 'a) -> impl Iterator<Item=(f32, [[f64;2];4])> + 'a {
+    bins.map(|bin| {
+            let x = bin.freq_range.map(|v| v as f64);
+            let y = bin.time_range.map(|v| v as f64);
+            (bin.mag, [
                 [x.0, y.0],
                 [x.0, y.1],
                 [x.1, y.1],
