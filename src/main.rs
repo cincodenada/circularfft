@@ -139,11 +139,12 @@ struct Counter(i32);
 #[derive(Data, Clone, Lens)]
 struct AppData {
     params: spec::Params,
+    fft_max_freq: spec::Freq,
     // TODO: Updating depends on manually requesting paint, that's icky, data-fy this
     #[data(ignore)]
     fft_cols: im::Vector<spec::Column>,
     #[data(ignore)]
-    val_range: (f32, f32),
+    val_range: (f32, f32)
 }
 
 struct FftParameter {
@@ -163,6 +164,7 @@ impl FftWidget {
     fn recalculate(&mut self, data: &mut AppData) {
         dbg!("Recalculating");
         self.spectrogram.calculate_with(data.params);
+        data.fft_max_freq = self.spectrogram.max_freq;
         data.val_range = (self.spectrogram.min_mag, self.spectrogram.max_mag);
         // TODO: This clone shouldn't be necessary, from() should do a clone I think
         data.fft_cols = self.spectrogram.columns.clone().into();
@@ -193,6 +195,7 @@ fn make_druid_window(spectrogram: spec::Spectrogram) -> Result<(), PlatformError
     let state = AppData {
         params: spectrogram.params,
         fft_cols: im::Vector::new(),
+        fft_max_freq: 0.0,
         val_range: (0.0, 0.0)
     };
 
@@ -253,19 +256,20 @@ fn build_druid_window(spectrogram: spec::Spectrogram) -> impl Widget<AppData> {
         //let col = &data.fft_cols[50];
         //let rects = make_wedges(octave_bins(&col, freq_range), freq_range.0);
         let rects = data.fft_cols.iter().enumerate().map(|(idx, col)| {
-            col.bins.iter().map(move |bin| (SlimBin::from_bin(bin, (idx as f64, (idx+1) as f64))))
+            col.bins.iter().skip(1).map(move |bin| {
+                (SlimBin::from_bin(bin, (idx as f64, (idx+1) as f64)))
+            })
         }).flatten();
         let dims = ctx.size();
 
         let min_dim = std::cmp::min_by(dims.width, dims.height, |a, b| a.partial_cmp(b).unwrap());
         let xscale = dims.width/data.fft_cols.len() as f64;
-        let first_bins = &data.fft_cols[0].bins;
-        let yscale = dims.height/first_bins[first_bins.len() - 1].freq.log2() as f64;
+        let yscale = dims.height/mapped_range.1;
         // TODO: Make this a viewport
         rects.map(|bin| {
             let rect = druid::Rect::new(
-                bin.xrange.0*xscale, bin.yrange.0.log2()*yscale,
-                bin.xrange.1*xscale, bin.yrange.1.log2()*yscale
+                bin.xrange.0*xscale, dims.height - bin.yrange.0.log2()*yscale,
+                bin.xrange.1*xscale, dims.height - bin.yrange.1.log2()*yscale
             );
             let color: Color = colorer.map(bin.val).into();
             ctx.fill(rect, &color)
@@ -430,8 +434,8 @@ impl SlimBin {
     fn from_bin(bin: &spec::Bin, time_range: ScreenPoint) -> SlimBin {
         SlimBin {
             val: bin.mag,
-            xrange: bin.freq_range.map(|v| v as f64),
-            yrange: time_range.map(|v| v as f64)
+            xrange: time_range.map(|v| v as f64),
+            yrange: bin.freq_range.map(|v| v as f64)
         }
     }
 }

@@ -96,7 +96,7 @@ impl Bin {
 }
 impl std::fmt::Debug for Bin {
 	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-		f.write_fmt(format_args!("Bin @ {}, Mag {} ({}/{})", self.freq, self.mag, self.val.re, self.val.im))
+		f.write_fmt(format_args!("Bin @ {} ({}-{}), Mag {} ({}/{})", self.freq, self.freq_range.0, self.freq_range.1, self.mag, self.val.re, self.val.im))
 	}
 }
 
