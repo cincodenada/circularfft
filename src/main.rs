@@ -10,13 +10,13 @@ use spectrogram as spec;
 use piston_window::*;
 use tuple::*;
 
-use druid::{AppLauncher, LocalizedString, PlatformError, WindowDesc};
+use druid::{AppLauncher, WindowDesc, PlatformError};
 use druid::{Data, Lens};
 use druid::{Color, RenderContext};
-use druid::{Command, Selector, Target};
+use druid::{Command, Selector};
 use druid::{Widget, WidgetExt, Env, WidgetId, LifeCycle, Event};
 use druid_widget_nursery::DropdownSelect;
-use druid::widget::{Controller, Button, Flex, Label, Painter, IdentityWrapper};
+use druid::widget::{Controller, Flex, Label, Painter, IdentityWrapper};
 use druid::piet::kurbo::{Line, BezPath, PathSeg, PathEl};
 use druid::im;
 
@@ -27,7 +27,6 @@ use std::time::{Duration, SystemTime};
 use std::fs::File;
 use std::path::Path;
 use wav::BitDepth;
-use std::convert::TryFrom;
 //use inline_python::python;
 use ordered_float::OrderedFloat;
 use itertools::Itertools;
@@ -65,7 +64,7 @@ impl Colorer<spec::Freq> {
 
     fn map(&self, val: spec::Freq) -> ArrayColor {
         match (val.log2() - self.min)/self.halfrange {
-            v @ 0.0..=1.0 => [0.0, v/2.0, 0.0, 1.0].into(),
+            v if v > 0.0 && v <= 1.0 => [0.0, v/2.0, 0.0, 1.0].into(),
             v => [v-1.0, v/2.0, 0.0, 1.0].into(),
         }
     }
@@ -90,7 +89,7 @@ impl Into<Color> for ArrayColor {
     }
 }
 
-fn main() -> Result<(), std::io::Error> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = env::args().collect::<Vec<_>>();
     let fftpow = args[1].parse::<u32>().unwrap_or(13);
     let overlap = args[2].parse::<f32>().unwrap_or(0.5);
@@ -108,8 +107,8 @@ fn main() -> Result<(), std::io::Error> {
         //BitDepth::ThirtyTwoFloat(vec) => vec.into_iter().collect(),
         // TODO: We probably shouldn't need to collect() here
         BitDepth::ThirtyTwoFloat(vec) => vec,
+        //BitDepth::Empty => panic!("Ack!")
         _ => panic!("Ack!"),
-        BitDepth::Empty => panic!("Ack!")
     };
     dbg!(&header);
 
@@ -130,7 +129,6 @@ fn main() -> Result<(), std::io::Error> {
     //make_window(&spectrogram, colorer, Duration::from_millis(ms_per_col.into()));
     //make_circle_plot(&spectrogram);
     //make_rect_plot(&spectrogram);
-
     Ok(())
 }
 
@@ -157,7 +155,7 @@ struct FftParameter {
 impl<W: Widget<AppData>> Controller<AppData, W> for FftParameter {
     fn update(&mut self, child: &mut W, ctx: &mut druid::UpdateCtx, old_data: &AppData, data: &AppData, env: &Env) {
         child.update(ctx, old_data, data, env);
-        if(!data.same(old_data)) {
+        if !data.same(old_data) {
             dbg!("Requesting recalculation");
             ctx.submit_command(Command::new(FFT_CALC_SELECTOR, (), self.fft_widget_id));
         }
@@ -198,7 +196,7 @@ impl<W: Widget<AppData>> Controller<AppData, W> for FftWidget {
 }
 
 
-fn make_druid_window(spectrogram: spec::Spectrogram) {
+fn make_druid_window(spectrogram: spec::Spectrogram) -> Result<(), PlatformError> {
     let state = AppData {
         fft_size: spectrogram.params.fft_size,
         window_type: spectrogram.params.window_type,
@@ -214,7 +212,7 @@ fn make_druid_window(spectrogram: spec::Spectrogram) {
 
     // Run the app
     AppLauncher::with_window(main_window)
-        .launch(state);
+        .launch(state)
 }
 
 fn build_druid_window(spectrogram: spec::Spectrogram) -> impl Widget<AppData> {
@@ -253,9 +251,9 @@ fn build_druid_window(spectrogram: spec::Spectrogram) -> impl Widget<AppData> {
     let mapped_range = freq_range.map(|v| (v as f64).log2());
     let mapped_span = mapped_range.1 - mapped_range.0;
 
-    let fft = IdentityWrapper::wrap(Painter::new(move |ctx, data: &AppData, env| {
+    let fft = IdentityWrapper::wrap(Painter::new(move |ctx, data: &AppData, _env| {
         dbg!(data.fft_cols.len());
-        if(data.fft_cols.len() < 50) { return }
+        if data.fft_cols.len() < 50 { return }
 
         let col = &data.fft_cols[50];
         // TODO: Push colorer itself into state?
@@ -289,7 +287,7 @@ fn build_druid_window(spectrogram: spec::Spectrogram) -> impl Widget<AppData> {
         .with_child(controls)
 }
 
-fn make_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>, spf: std::time::Duration) {
+fn make_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>, spf: Duration) {
     let freq_range = (16.35, 8372.02);
     let mapped_range = freq_range.map(|v| (v as f64).log2());
     let mapped_span = mapped_range.1 - mapped_range.0;
@@ -303,7 +301,7 @@ fn make_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>, sp
     while let Some(e) = window.next() {
         window.draw_2d(&e, |c, g, _| {
             if let Ok(v) = time.elapsed() {
-                if(v > spf) {
+                if v > spf {
                     col = slice.next().unwrap();
                     time = SystemTime::now();
                 }
@@ -344,7 +342,7 @@ fn make_circle_plot(spectrogram: &spec::Spectrogram) {
     //dbg!(&wholes);
 
     let mag = spectrogram.columns[100].bins.iter().map(|b| b.mag.log2()).collect::<Vec<_>>();
-    let (x, y, values) = make_color_mesh(&mag, &freqbins, &onefreq, xbinsf);
+    let (_x, _y, _values) = make_color_mesh(&mag, &freqbins, &onefreq, xbinsf);
 
     //python! {
     //    import matplotlib.pyplot as plt
@@ -381,7 +379,7 @@ fn make_rect_plot(spectrogram: &spec::Spectrogram) {
     //let freq: Vec<f32> = starts.iter().map(|_| freqbins.to_vec()).flatten().collect();
 
     let cols = spectrogram.columns.iter().enumerate();
-    let mut vals = cols.clone().skip(1).map(|(idx, c)| c.bins.iter().skip(1)
+    let vals = cols.clone().skip(1).map(|(idx, c)| c.bins.iter().skip(1)
         .map(move |b| (idx*spectrogram.half_size, b.freq.log2(), b.mag.log2()))
     ).flatten();
     let time = vals.clone().map(|v| v.0).collect::<Vec<_>>();
@@ -415,7 +413,7 @@ fn make_color_mesh(fftcol: &[f32], freqbins: &[f32], onefreq: &[f32], repcount: 
     let dupcol: (Vec<Vec<_>>, Vec<Vec<_>>) = (0..=repcount as usize).map(|whole| onefreq.iter().map(|frac| {
         let comp = *frac + whole as f32;
         match curfreq {
-            Some([min, max]) if comp >= *max => {
+            Some([_min, max]) if comp >= *max => {
                 curfreq = freqiter.next();
                 curcol = col.next().unwrap();
             },
@@ -427,22 +425,7 @@ fn make_color_mesh(fftcol: &[f32], freqbins: &[f32], onefreq: &[f32], repcount: 
     (dupcol.0, wholes, dupcol.1)
 }
 
-fn rep_last<T>(v: &Vec<T>) -> impl Iterator<Item=&T> {
-    v.iter().chain(std::iter::once(&v[v.len()-1]))
-}
-fn add_pi(v: &Vec<f32>) -> impl Iterator<Item=&f32> {
-    v.iter().chain(std::iter::once(&(std::f32::consts::PI*2.0)))
-}
-
-fn bracket<X: Copy, V: Copy>(it: impl Iterator<Item=(X, V)>, min: X, max: X) -> impl Iterator<Item=(X, V)> {
-    it.enumerate()
-        .map(move |(idx, tup)| match idx {
-            0 => vec![(min, tup.1), tup],
-            _ => vec![tup]
-        }).flatten()
-}
-
-fn dbgIter<I, T>(it: I) -> impl Iterator<Item=T> where I: Iterator<Item=T>, T: std::fmt::Debug {
+fn dbg_iter<I, T>(it: I) -> impl Iterator<Item=T> where I: Iterator<Item=T>, T: std::fmt::Debug {
     let collected = it.collect::<Vec<_>>();
     dbg!(&collected);
     collected.into_iter()
@@ -457,7 +440,7 @@ fn make_bins<'a>(col: &'a spec::Column, clip: FreqRange) -> impl Iterator<Item=(
         .tuple_windows()
         .map(move |v| {
             match v {
-                (ShardResult::Start(cur_shard, cur), ShardResult::Start(next_shard, next)) => vec![
+                (ShardResult::Start(cur_shard, cur), ShardResult::Start(next_shard, _)) => vec![
                     (
                         cur.mag,
                         (bounds.0, cur.freq_fract),
@@ -469,7 +452,7 @@ fn make_bins<'a>(col: &'a spec::Column, clip: FreqRange) -> impl Iterator<Item=(
                         (cur_shard, next_shard)
                     )
                 ],
-                (ShardResult::Start(prev_shard, prev), ShardResult::Item(cur_shard, cur)) => vec![
+                (ShardResult::Start(_, prev), ShardResult::Item(cur_shard, cur)) => vec![
                     (
                         cur.mag,
                         (bounds.0, prev.freq_fract),
@@ -481,14 +464,14 @@ fn make_bins<'a>(col: &'a spec::Column, clip: FreqRange) -> impl Iterator<Item=(
                         (cur_shard, cur_shard + 1)
                     )
                 ],
-                (ShardResult::Item(prev_shard, prev), ShardResult::Item(cur_shard, cur)) => vec![
+                (ShardResult::Item(_, prev), ShardResult::Item(cur_shard, cur)) => vec![
                     (
                         cur.mag,
                         (prev.freq_fract, cur.freq_fract),
                         (cur_shard, cur_shard + 1)
                     )
                 ],
-                (ShardResult::Item(prev_shard, prev), ShardResult::Start(cur_shard, cur)) => vec![
+                (ShardResult::Item(_, prev), ShardResult::Start(cur_shard, cur)) => vec![
                     (
                         cur.mag,
                         (prev.freq_fract, bounds.1),
