@@ -71,13 +71,18 @@ impl std::fmt::Debug for Bin {
 	}
 }
 
+#[derive(Default, Clone, Copy)]
+pub struct Params {
+	pub fft_size: usize,
+	pub overlap: f32,
+	pub window_type: Window,
+}
+
 #[derive(Default)]
 pub struct Spectrogram {
+	pub params: Params,
 	pub sample_rate: u32,
-	pub fft_size: usize,
 	pub half_size: usize,
-	pub overlap: f32,
-	pub windowFunc: Window,
 	pub columns: Vec<Column>,
 	pub max_freq: Freq,
 	pub max_mag: Mag,
@@ -98,36 +103,27 @@ impl Spectrogram {
 		}
 	}
 	
-	pub fn generate(samples: &Vec<f32>, fft_size: usize, overlap: f32, windowFunc: Window, sample_rate: u32, channels: u16) -> Spectrogram {
-		let s = Self::from_samples(samples, sample_rate, channels);
-		s.calculate_with(fft_size, overlap, windowFunc)
+	pub fn calculate_with(&mut self, params: Params) -> () {
+		self.params = params;
+		self.calculate();
 	}
 
-	pub fn calculate_with(mut self, fft_size: usize, overlap: f32, windowFunc: Window) -> Self {
-		self.fft_size = fft_size;
-		self.overlap = overlap;
-		self.windowFunc = windowFunc;
-
-		self.calculate()
-	}
-
-	pub fn calculate(mut self) -> Self {
+	pub fn calculate(&mut self) -> () {
 		let mut planner = FftPlanner::new();
-		let fft = planner.plan_fft_forward(self.fft_size);
-		let step = (self.fft_size as f32 * (1.0-self.overlap)) as usize;
+		let fft = planner.plan_fft_forward(self.params.fft_size);
+		let step = (self.params.fft_size as f32 * (1.0-self.params.overlap)) as usize;
 
 		self.min_mag = f32::INFINITY;
 		self.max_mag = f32::NEG_INFINITY;
 
-		self.columns = (0..self.samples.len()-self.fft_size).step_by(step).map(|start| {
-			let mut buffer = self.samples[start..start + self.fft_size].to_vec();
+		self.columns = (0..self.samples.len()-self.params.fft_size).step_by(step).map(|start| {
+			let mut buffer = self.samples[start..start + self.params.fft_size].to_vec();
 			fft.process(&mut buffer);
 			let col = Column::from_bins(self.sample_rate, buffer);
 			if col.min_mag < self.min_mag { self.min_mag = col.min_mag }
 			if col.max_mag > self.max_mag { self.max_mag = col.max_mag }
 			col
 		}).collect();
-		self
 	}
 }
 

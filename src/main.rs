@@ -10,16 +10,17 @@ use spectrogram as spec;
 use piston_window::*;
 use tuple::*;
 
-use druid::{AppLauncher, LocalizedString, PlatformError};
+use druid::{AppLauncher, LocalizedString, PlatformError, WindowDesc};
 use druid::{Data, Lens};
 use druid::{Color, RenderContext};
 use druid::{Command, Selector, Target};
-use druid::{Widget, WidgetExt, WindowDesc};
+use druid::{Widget, WidgetExt, Env, WidgetId, LifeCycle, Event};
 use druid_widget_nursery::DropdownSelect;
-use druid::widget::{Button, Flex, Label, Painter};
+use druid::widget::{Controller, Button, Flex, Label, Painter};
 use druid::piet::kurbo::{Line, BezPath, PathSeg, PathEl};
+use druid::im;
 
-const FFT_CALC_SELECTOR = Selector::new("fft_calc")
+const FFT_CALC_SELECTOR: Selector<spec::Params> = Selector::new("fft_calc");
 
 use std::env;
 use std::time::{Duration, SystemTime};
@@ -114,9 +115,14 @@ fn main() -> Result<(), std::io::Error> {
 
     //let floatMax = |a:f32, b:f32| max(OrderedFloat(a), OrderedFloat(b)).into();
 
-    let spectrogram = spec::Spectrogram::from_samples(
+    let mut spectrogram = spec::Spectrogram::from_samples(
         &samples, header.sampling_rate, header.channel_count
-    ).calculate_with(fftsize, overlap, spec::Window::Hann);
+    );
+    spectrogram.calculate_with(spec::Params {
+        fft_size: fftsize,
+        overlap,
+        window_type: spec::Window::Hann
+    });
     let ms_per_col = (((fftsize as f32 * (1.0-overlap))/header.sampling_rate as f32)/speed*1000.0) as u64;
     dbg!(ms_per_col);
 
@@ -140,33 +146,49 @@ struct AppData {
     fft_size: usize,
     window_type: spec::Window,
     overlap: f32,
-    fft_cols: im::Vector<spec::Column>
+    // TODO: Updating depends on manually requesting paint, that's icky, data-fy this
+    #[data(ignore)]
+    fft_cols: im::Vector<spec::Column>,
+    fft_range: (f32, f32)
 }
 
-struct FftParameter<W> {
-    fft_widget: &W
+struct FftParameter {
+    fft_widget_id: WidgetId
 }
-impl<T, W: Widget<T>> Controller<T, W> for FftParameter<W> {
-    fn update(&mut self, child: &mut W, ctx: &mut druid::UpdateCtx, old_data: &T, data: &mut T, env: &Env) {
-        dbg!("Requesting recalculation")
-        const selector = env.get(FFT_CALC_SELECTOR)
-        ctx.submit_command(Command::new(selector, (data.fft_size, data.overlap, data.window_type), self.fft_widget))
+impl<W: Widget<AppData>> Controller<AppData, W> for FftParameter {
+    fn update(&mut self, child: &mut W, ctx: &mut druid::UpdateCtx, old_data: &AppData, data: &AppData, env: &Env) {
+        dbg!("Requesting recalculation");
+        ctx.submit_command(Command::new(FFT_CALC_SELECTOR, spec::Params {
+            fft_size: data.fft_size,
+            overlap: data.overlap,
+            window_type: data.window_type
+        }, self.fft_widget_id))
     }
 }
 struct FftWidget {
-    spectrogram: spec::Spectrogram
+    spectrogram: spec::Spectrogram,
+    id: WidgetId
 }
-impl<T, W: Widget<T>> Controller<T, W> for FftWidget {
-    fn event(&mut self, child: &mut W, ctx: &mut druid::EventCtx, event: &druid::Event, data: &mut T, env: &Env) {
-        switch(event) {
-            Command(cmd) => match cmd.get<FFT_CALC_SELECTOR>() => {
-                Some((fft_size, overlap, window_type)) => {
+impl<W: Widget<AppData>> Controller<AppData, W> for FftWidget {
+    fn lifecycle(&mut self, child: &mut W, ctx: &mut druid::LifeCycleCtx, event: &LifeCycle, data: &AppData, env: &Env) {
+        match event {
+            LifeCycle::WidgetAdded => { self.id = ctx.widget_id(); },
+            _ => {}
+        };
+        child.lifecycle(ctx, event, data, env)
+    }
+    fn event(&mut self, child: &mut W, ctx: &mut druid::EventCtx, event: &druid::Event, data: &mut AppData, env: &Env) {
+        match event {
+            Event::Command(cmd) => match cmd.get(FFT_CALC_SELECTOR) {
+                Some(params) => {
                     dbg!("Recalculating");
-                    self.spectrogram.calculate_with(fft_size, overlap, window_type);
-                    self.data.fft_cols = self.spectrogram.columns.into();
+                    self.spectrogram.calculate_with(*params);
+                    data.fft_range = (self.spectrogram.min_mag, self.spectrogram.max_mag);
+                    // TODO: This clone shouldn't be necessary, from() should do a clone I think
+                    data.fft_cols = self.spectrogram.columns.clone().into();
+                    ctx.request_paint();
                 },
                 None => {}
-            }
             },
             _ => {}
         }
@@ -183,7 +205,9 @@ fn make_druid_window() {
     let state = AppData {
         fft_size: 8192,
         window_type: spec::Window::Hann,
-        overlap: 0.8
+        overlap: 0.8,
+        fft_cols: im::Vector::new(),
+        fft_range: (0.0, 0.0)
     };
 
     // Run the app
@@ -246,11 +270,9 @@ fn build_druid_window() -> impl Widget<AppData> {
         };
         dbg!(&header);
 
-        let spectrogram = spec::Spectrogram::from_samples(
-            &samples, header.sampling_rate, header.channel_count
-        ).calculate_with(data.fft_size, data.overlap, data.window_type);
-        let col = spectrogram.columns[50].clone();
-        let colorer = Colorer::new(spectrogram.min_mag, spectrogram.max_mag);
+        let col = &data.fft_cols[50];
+        // TODO: Push colorer itself into state?
+        let colorer = Colorer::new(data.fft_range.0, data.fft_range.1);
 
         //ctx.clear([0.5, 0.5, 0.5, 1.0]);
         let rects = make_wedges(&col, freq_range);
