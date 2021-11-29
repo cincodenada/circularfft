@@ -8,7 +8,7 @@ pub type Freq = f32;
 pub type Mag = f32;
 pub type Point = Complex<Mag>;
 
-#[derive(Clone, Eq, PartialEq, Data)]
+#[derive(Clone, Eq, PartialEq, Data, Copy)]
 pub enum Window {
 	Square,
 	Hann,

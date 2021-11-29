@@ -116,7 +116,7 @@ fn main() -> Result<(), std::io::Error> {
 
     let colorer = Colorer::new(spectrogram.min_mag, spectrogram.max_mag);
 
-    make_druid_window(&spectrogram, colorer, Duration::from_millis(ms_per_col.into()));
+    make_druid_window();
     //make_window(&spectrogram, colorer, Duration::from_millis(ms_per_col.into()));
     //make_circle_plot(&spectrogram);
     //make_rect_plot(&spectrogram);
@@ -135,9 +135,9 @@ struct AppData {
 }
 
 
-fn make_druid_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>, spf: std::time::Duration) {
+fn make_druid_window() {
     // Window builder. We set title and size
-    let main_window = WindowDesc::new(build_druid_window(spectrogram, colorer))
+    let main_window = WindowDesc::new(build_druid_window())
         .title("Spectrogram Toy")
         .window_size((200.0, 100.0));
 
@@ -152,7 +152,7 @@ fn make_druid_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Fre
         .launch(state);
 }
 
-fn build_druid_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Freq>) -> impl Widget<AppData> {
+fn build_druid_window() -> impl Widget<AppData> {
     // The label text will be computed dynamically based on the current locale and count
     let text = LocalizedString::new("hello-counter")
         .with_arg("count", |data: &Counter, _env| (*data).0.into());
@@ -192,9 +192,27 @@ fn build_druid_window(spectrogram: &spec::Spectrogram, colorer: Colorer<spec::Fr
     let mapped_range = freq_range.map(|v| (v as f64).log2());
     let mapped_span = mapped_range.1 - mapped_range.0;
 
-    let col = spectrogram.columns[50].clone();
-
     let fft = Painter::new(move |ctx, data: &AppData, env| {
+        let mut inp_file = File::open(Path::new("input.wav")).unwrap();
+        let (header, wavdata) = wav::read(&mut inp_file).unwrap();
+
+        let samples : Vec<_> = match wavdata {
+            //BitDepth::Sixteen(vec) => vec.into_iter().collect(),
+            //BitDepth::TwentyFour(vec) => vec.into_iter().collect(),
+            //BitDepth::ThirtyTwoFloat(vec) => vec.into_iter().collect(),
+            // TODO: We probably shouldn't need to collect() here
+            BitDepth::ThirtyTwoFloat(vec) => vec,
+            _ => panic!("Ack!"),
+            BitDepth::Empty => panic!("Ack!")
+        };
+        dbg!(&header);
+
+        let spectrogram = spec::Spectrogram::from_samples(
+            &samples, header.sampling_rate, header.channel_count
+        ).calculate_with(data.fft_size, data.overlap, data.window_type);
+        let col = spectrogram.columns[50].clone();
+        let colorer = Colorer::new(spectrogram.min_mag, spectrogram.max_mag);
+
         //ctx.clear([0.5, 0.5, 0.5, 1.0]);
         let rects = make_wedges(&col, freq_range);
         let dims = ctx.size();
