@@ -100,7 +100,8 @@ impl std::fmt::Debug for Bin {
 	}
 }
 
-#[derive(Default, Clone, Copy)]
+// TODO: We shouldn't need Data in here
+#[derive(Default, Clone, Copy, Data)]
 pub struct Params {
 	pub fft_size: usize,
 	pub overlap: f32,

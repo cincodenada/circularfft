@@ -18,6 +18,7 @@ use druid::{Widget, WidgetExt, Env, WidgetId, LifeCycle, Event};
 use druid_widget_nursery::DropdownSelect;
 use druid::widget::{Controller, Flex, Label, Painter, IdentityWrapper};
 use druid::piet::kurbo::{Line, BezPath, PathSeg, PathEl};
+use druid::{lens, LensExt};
 use druid::im;
 
 const FFT_CALC_SELECTOR: Selector<()> = Selector::new("fft_calc");
@@ -135,13 +136,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[derive(Clone, Data)]
 struct Counter(i32);
 
-
-
 #[derive(Data, Clone, Lens)]
 struct AppData {
-    fft_size: usize,
-    window_type: spec::Window,
-    overlap: f32,
+    params: spec::Params,
     // TODO: Updating depends on manually requesting paint, that's icky, data-fy this
     #[data(ignore)]
     fft_cols: im::Vector<spec::Column>,
@@ -165,11 +162,7 @@ struct FftWidget { spectrogram: spec::Spectrogram }
 impl FftWidget {
     fn recalculate(&mut self, data: &mut AppData) {
         dbg!("Recalculating");
-        self.spectrogram.calculate_with(spec::Params {
-            fft_size: data.fft_size,
-            overlap: data.overlap,
-            window_type: data.window_type
-        });
+        self.spectrogram.calculate_with(data.params);
         data.val_range = (self.spectrogram.min_mag, self.spectrogram.max_mag);
         // TODO: This clone shouldn't be necessary, from() should do a clone I think
         data.fft_cols = self.spectrogram.columns.clone().into();
@@ -198,9 +191,7 @@ impl<W: Widget<AppData>> Controller<AppData, W> for FftWidget {
 
 fn make_druid_window(spectrogram: spec::Spectrogram) -> Result<(), PlatformError> {
     let state = AppData {
-        fft_size: spectrogram.params.fft_size,
-        window_type: spectrogram.params.window_type,
-        overlap: spectrogram.params.overlap,
+        params: spectrogram.params,
         fft_cols: im::Vector::new(),
         val_range: (0.0, 0.0)
     };
@@ -226,7 +217,7 @@ fn build_druid_window(spectrogram: spec::Spectrogram) -> impl Widget<AppData> {
                 ("16384", 16384)
             ])
             .align_left()
-            .lens(AppData::fft_size)
+            .lens(AppData::params.then(lens!(spec::Params, fft_size)))
             .controller(FftParameter{fft_widget_id})
         );
     let window_type = Flex::row()
@@ -238,7 +229,7 @@ fn build_druid_window(spectrogram: spec::Spectrogram) -> impl Widget<AppData> {
                 ("Blackman", spec::Window::Blackman)
             ])
             .align_left()
-            .lens(AppData::window_type)
+            .lens(AppData::params.then(lens!(spec::Params, window_type)))
             .controller(FftParameter{fft_widget_id})
         );
 
