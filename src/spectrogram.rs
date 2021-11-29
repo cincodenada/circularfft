@@ -150,7 +150,7 @@ impl Spectrogram {
         self.samples[start..start + self.params.fft_size].to_vec()
       );
 			fft.process(&mut buffer);
-			let col = Column::from_bins(self.sample_rate, buffer);
+			let col = Column::from_bins(self.sample_rate, buffer, (start as f64/self.sample_rate as f64, ((start+step) as f64)/self.sample_rate as f64));
 			if col.min_mag < self.min_mag { self.min_mag = col.min_mag }
 			if col.max_mag > self.max_mag { self.max_mag = col.max_mag }
 			col
@@ -162,10 +162,11 @@ impl Spectrogram {
 pub struct Column {
 	pub bins: Vec<Bin>,
 	pub max_mag: f32,
-	pub min_mag: f32
+	pub min_mag: f32,
+	pub time_range: (f64, f64)
 }
 impl Column {
-	pub fn from_bins(sample_rate: u32, bins: Vec<Point>) -> Column {
+	pub fn from_bins(sample_rate: u32, bins: Vec<Point>, time_range: (f64, f64)) -> Column {
 		let mut min_mag = f32::INFINITY;
 		let mut max_mag = f32::NEG_INFINITY;
 		let fft_size = bins.len();
@@ -179,7 +180,7 @@ impl Column {
 				bin
 			}).collect();
 
-		 Column { bins, min_mag, max_mag }
+		 Column { bins, min_mag, max_mag, time_range }
 	}
 }
 
