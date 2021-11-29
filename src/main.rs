@@ -147,6 +147,7 @@ struct AppData {
     // TODO: Updating depends on manually requesting paint, that's icky, data-fy this
     #[data(ignore)]
     fft_cols: im::Vector<spec::Column>,
+    #[data(ignore)]
     fft_range: (f32, f32)
 }
 
@@ -155,30 +156,31 @@ struct FftParameter {
 }
 impl<W: Widget<AppData>> Controller<AppData, W> for FftParameter {
     fn update(&mut self, child: &mut W, ctx: &mut druid::UpdateCtx, old_data: &AppData, data: &AppData, env: &Env) {
-        dbg!("Requesting recalculation");
-        ctx.submit_command(Command::new(FFT_CALC_SELECTOR, spec::Params {
-            fft_size: data.fft_size,
-            overlap: data.overlap,
-            window_type: data.window_type
-        }, self.fft_widget_id))
+        child.update(ctx, old_data, data, env);
+        if(!data.same(old_data)) {
+            dbg!("Requesting recalculation");
+            ctx.submit_command(Command::new(FFT_CALC_SELECTOR, spec::Params {
+                fft_size: data.fft_size,
+                overlap: data.overlap,
+                window_type: data.window_type
+            }, self.fft_widget_id));
+        }
     }
 }
 struct FftWidget { spectrogram: spec::Spectrogram }
 impl<W: Widget<AppData>> Controller<AppData, W> for FftWidget {
     fn event(&mut self, child: &mut W, ctx: &mut druid::EventCtx, event: &druid::Event, data: &mut AppData, env: &Env) {
         match event {
-            Event::Command(cmd) => match cmd.get(FFT_CALC_SELECTOR) {
-                Some(params) => {
-                    dbg!("Recalculating");
-                    self.spectrogram.calculate_with(*params);
-                    data.fft_range = (self.spectrogram.min_mag, self.spectrogram.max_mag);
-                    // TODO: This clone shouldn't be necessary, from() should do a clone I think
-                    data.fft_cols = self.spectrogram.columns.clone().into();
-                    ctx.request_paint();
-                },
-                None => {}
+            Event::Command(cmd) if cmd.is(FFT_CALC_SELECTOR) => {
+                let params = cmd.get(FFT_CALC_SELECTOR).expect("Failed to get params!");
+                dbg!("Recalculating");
+                self.spectrogram.calculate_with(*params);
+                data.fft_range = (self.spectrogram.min_mag, self.spectrogram.max_mag);
+                // TODO: This clone shouldn't be necessary, from() should do a clone I think
+                data.fft_cols = self.spectrogram.columns.clone().into();
+                ctx.request_paint();
             },
-            _ => {}
+            _ => child.event(ctx, event, data, env)
         }
     }
 }
