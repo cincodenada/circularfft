@@ -20,7 +20,7 @@ use druid::widget::{Controller, Button, Flex, Label, Painter, IdentityWrapper};
 use druid::piet::kurbo::{Line, BezPath, PathSeg, PathEl};
 use druid::im;
 
-const FFT_CALC_SELECTOR: Selector<spec::Params> = Selector::new("fft_calc");
+const FFT_CALC_SELECTOR: Selector<()> = Selector::new("fft_calc");
 
 use std::env;
 use std::time::{Duration, SystemTime};
@@ -159,30 +159,42 @@ impl<W: Widget<AppData>> Controller<AppData, W> for FftParameter {
         child.update(ctx, old_data, data, env);
         if(!data.same(old_data)) {
             dbg!("Requesting recalculation");
-            ctx.submit_command(Command::new(FFT_CALC_SELECTOR, spec::Params {
-                fft_size: data.fft_size,
-                overlap: data.overlap,
-                window_type: data.window_type
-            }, self.fft_widget_id));
+            ctx.submit_command(Command::new(FFT_CALC_SELECTOR, (), self.fft_widget_id));
         }
     }
 }
 struct FftWidget { spectrogram: spec::Spectrogram }
+impl FftWidget {
+    fn recalculate(&mut self, data: &mut AppData) {
+        dbg!("Recalculating");
+        self.spectrogram.calculate_with(spec::Params {
+            fft_size: data.fft_size,
+            overlap: data.overlap,
+            window_type: data.window_type
+        });
+        data.fft_range = (self.spectrogram.min_mag, self.spectrogram.max_mag);
+        // TODO: This clone shouldn't be necessary, from() should do a clone I think
+        data.fft_cols = self.spectrogram.columns.clone().into();
+    }
+}
 impl<W: Widget<AppData>> Controller<AppData, W> for FftWidget {
+    fn lifecycle(&mut self, child: &mut W, ctx: &mut druid::LifeCycleCtx, event: &druid::LifeCycle, data: &AppData, env: &Env) {
+        child.lifecycle(ctx, event, data, env);
+        match event {
+            LifeCycle::WidgetAdded => { ctx.submit_command(Command::new(FFT_CALC_SELECTOR, (), ctx.widget_id())); }
+            _ => {}
+        }
+    }
     fn event(&mut self, child: &mut W, ctx: &mut druid::EventCtx, event: &druid::Event, data: &mut AppData, env: &Env) {
         match event {
             Event::Command(cmd) if cmd.is(FFT_CALC_SELECTOR) => {
-                let params = cmd.get(FFT_CALC_SELECTOR).expect("Failed to get params!");
-                dbg!("Recalculating");
-                self.spectrogram.calculate_with(*params);
-                data.fft_range = (self.spectrogram.min_mag, self.spectrogram.max_mag);
-                // TODO: This clone shouldn't be necessary, from() should do a clone I think
-                data.fft_cols = self.spectrogram.columns.clone().into();
+                self.recalculate(data);
                 ctx.request_paint();
             },
             _ => child.event(ctx, event, data, env)
         }
     }
+
 }
 
 
